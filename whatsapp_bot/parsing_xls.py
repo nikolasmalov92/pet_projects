@@ -7,6 +7,7 @@ def parsing_xls():
     df = pd.read_excel(file_path, dtype={'Телефон': str})
     if 'Телефон' in df.columns:
         phone_numbers = df['Телефон'].dropna().tolist()
+
         def format_phone_number(phone):
             cleaned_phone = re.sub(r'[^\d+]', '', phone)
             return cleaned_phone
@@ -16,7 +17,6 @@ def parsing_xls():
         return formatted_numbers
 
     else:
-        print("Столбец 'Телефон' не найден в файле.")
         return None
 
 

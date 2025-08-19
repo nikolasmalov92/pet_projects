@@ -26,8 +26,7 @@ def get_json(url):
         return response.json()
 
     else:
-        message = f'Результат ошибки: {response.status_code}'
-        print(message)
+        print(f'Результат ошибки: {response.status_code}')
 
 
 def get_product_info(result_json):
