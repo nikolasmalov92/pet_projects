@@ -1,0 +1,13 @@
+# Barcode Scanner
+
+Программа для чтения штрих-кодов и отправки их через COM-порт.
+
+# Создать виртуальное окружение:
+    python.exe -m venv venv
+    venv\Scripts\activate.bat
+
+# Установка зависимостей:
+    pip install -r requirements.txt
+
+# Создание .exe файла:
+    pyinstaller main.py --name=barcode_scanner --onefile --hidden-import=serial.tools.list_ports --hidden-import=serial.serialwin32 --noconfirm --clean
