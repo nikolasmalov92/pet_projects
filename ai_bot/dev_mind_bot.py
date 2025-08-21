@@ -8,6 +8,9 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from openai import OpenAI
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
