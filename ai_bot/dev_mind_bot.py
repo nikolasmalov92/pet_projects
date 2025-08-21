@@ -7,14 +7,15 @@ from aiogram.enums import ChatAction
 from aiogram.filters import Command
 from aiogram.types import Message
 from openai import OpenAI
+import os
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
 )
 
-BOT_TOKEN = "8072620097:AAHz-6w2Q7xMaQqZPk55bFLb1M0_GtFcQdc"
-OPENAI_API_KEY = "ak_lkI_kUlk-IT8nmyDg5s9yy7bClgHSbWEChXdePpoW7Y"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
