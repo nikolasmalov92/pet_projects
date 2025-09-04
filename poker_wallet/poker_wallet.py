@@ -12,8 +12,7 @@ from aiogram.types import (
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-adm_ids_str = os.getenv("ADMIN_IDS")
-admin_ids = [int(id.strip()) for id in adm_ids_str.split(',') if id.strip()]
+admin_ids = json.loads(os.getenv('ADMIN_IDS', '[]'))
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
