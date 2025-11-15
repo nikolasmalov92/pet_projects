@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  poker-bot:
+    build: .
+    container_name: poker-wallet-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    working_dir: /app

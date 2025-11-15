@@ -39,11 +39,52 @@ def save_data():
 
 def get_main_keyboard():
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="💰 Баланс"), KeyboardButton(text="🔄 Сброс")],
-                  [KeyboardButton(text="📋 Список пользователей")]],
+        keyboard=[[KeyboardButton(text="💰 Баланс")],
+                  [KeyboardButton(text="📋 Список пользователей")],
+                  [KeyboardButton(text="🎰 Завершение игры")]],
         resize_keyboard=True,
         persistent=True
     )
+
+
+@dp.message(lambda m: m.text == "🎰 Завершение игры")
+async def finish(message: Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ ДА", callback_data="confirm_finish"),
+                InlineKeyboardButton(text="❌ НЕТ", callback_data="cancel_finish")
+            ]
+        ]
+    )
+    await message.answer("⚠️ Вы уверены, что хотите завершить игру? Все данные будут удалены!", reply_markup=keyboard)
+
+
+@dp.callback_query(lambda c: c.data == "confirm_finish")
+async def confirm_finish(callback: CallbackQuery):
+    global user_data
+
+    if user_data:
+        lines = []
+        for uid, data in user_data.items():
+            name = data["name"]
+            balance = data["balance"]
+            emoji = "📈" if balance > 0 else "📉" if balance < 0 else "⚖️"
+            lines.append(f"{name}: {balance:+.1f} {emoji}")
+        await callback.message.answer("📋 Балансы всех участников:\n\n" + "\n".join(lines))
+
+    for uid in user_data:
+        user_data[uid]["balance"] = 0
+    save_data()
+    await callback.message.answer(
+        "🎭 Занавес! Сегодняшний покер-спектакль окончен. Завтра - новый акт!\n\n💫 Все балансы обнулены.")
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "cancel_finish")
+async def cancel_finish(callback: CallbackQuery):
+    await callback.message.answer("❌ Действие отменено")
+    await callback.answer()
 
 
 @dp.message(lambda m: m.text == "📋 Список пользователей")
@@ -81,20 +122,26 @@ async def balance(message: Message):
     if user_id not in user_data:
         user_data[user_id] = {"name": first_name, "balance": 0}
         save_data()
+    if not user_data:
+        await message.answer("📭 Нет данных о пользователях.")
+        return
+    lines = []
 
-    balance = user_data[user_id]["balance"]
-    emoji = "📈" if balance > 0 else "📉" if balance < 0 else "⚖️"
-    await message.answer(f"💰 {first_name}, ваш баланс: {balance:+.1f} {emoji}")
+    for uid, data in user_data.items():
+        name = data["name"]
+        balance = data["balance"]
+        emoji = "📈" if balance > 0 else "📉" if balance < 0 else "⚖️"
+        lines.append(f"{name}: {balance:+.1f} {emoji}")
+
+    await message.answer("📋 Балансы всех участников:\n\n" + "\n".join(lines))
 
 
 @dp.message(lambda m: m.text == "🔄 Сброс")
 async def reset(message: Message):
-    user_id = message.from_user.id
-    first_name = message.from_user.first_name or "Неизвестный"
-
-    user_data[user_id]["balance"] = 0
-    save_data()
-    await message.answer(f"🔄 {first_name}, баланс сброшен до 0!")
+    for data in user_data.items():
+        data[1]['balance'] = 0
+        save_data()
+    await message.answer(f"🔄 Баланс сброшен до 0!")
 
 
 @dp.message(Command("admin_menu"))
@@ -109,12 +156,61 @@ async def admin_menu(message: Message):
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=data["name"], callback_data=f"choose_{uid}")]
+            [
+                InlineKeyboardButton(text=data["name"], callback_data=f"choose_{uid}"),
+                InlineKeyboardButton(text="🗑️", callback_data=f"delete_{uid}")
+            ]
             for uid, data in user_data.items()
         ]
     )
     await message.answer("👤 Выберите пользователя:", reply_markup=keyboard)
 
+
+@dp.callback_query(lambda c: c.data.startswith("delete_"))
+async def delete_user_confirm(callback: CallbackQuery):
+    target_id = int(callback.data.split("_")[1])
+
+    if target_id not in user_data:
+        await callback.answer("❌ Пользователь не найден!", show_alert=True)
+        return
+
+    name = user_data[target_id]["name"]
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{target_id}"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete")
+            ]
+        ]
+    )
+
+    await callback.message.answer(
+        f"⚠️ Вы уверены, что хотите удалить пользователя {name}?",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("confirm_delete_"))
+async def delete_user_final(callback: CallbackQuery):
+    target_id = int(callback.data.split("_")[2])
+
+    if target_id in user_data:
+        name = user_data[target_id]["name"]
+        del user_data[target_id]
+        save_data()
+        await callback.message.answer(f"✅ Пользователь {name} успешно удалён!")
+    else:
+        await callback.message.answer("❌ Пользователь не найден!")
+
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "cancel_delete")
+async def cancel_delete(callback: CallbackQuery):
+    await callback.message.answer("❌ Удаление отменено")
+    await callback.answer()
 
 @dp.callback_query(lambda c: c.data.startswith("choose_"))
 async def choose_user(callback: CallbackQuery):
@@ -201,9 +297,9 @@ async def show_balances(message: Message):
 
 
 async def main():
-    load_data()
     logging.basicConfig(level=logging.INFO)
     logging.info("Бот запущен")
+    load_data()
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
