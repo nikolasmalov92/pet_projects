@@ -3,7 +3,7 @@ import re
 
 
 def parsing_xls():
-    file_path = 'avtor_sushi.xlsx'
+    file_path = 'list_phone.xlsx'
     df = pd.read_excel(file_path, dtype={'Телефон': str})
     if 'Телефон' in df.columns:
         phone_numbers = df['Телефон'].dropna().tolist()

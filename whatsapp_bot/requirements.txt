@@ -1,6 +1,6 @@
-selenium==4.15.0
-undetected-chromedriver==3.5.0
-pandas==2.1.0
-openpyxl==3.1.0
-schedule==1.2.0
-chromedriver-autoinstaller==0.6.0
+selenium>=4.15.0
+undetected-chromedriver>=3.5.0
+pandas>=2.1.0
+openpyxl>=3.1.0
+schedule>=1.2.0
+chromedriver-autoinstaller>=0.6.0
