@@ -9,6 +9,9 @@ class MessageBot(WhatsappBot):
     def __init__(self, user_id: int):
         super().__init__(user_id)
         self.data = []
+        self.messages = None
+        self.photo_path = None
+
         self.message_limit: Tuple[int, int] = (30, 40)  # лимит на количество сообщений в час
         self.daily_limit: int = 350  # лимит на количество сообщений в день
         self.current_hourly_limit: int = random.randint(*self.message_limit)
@@ -41,11 +44,9 @@ class MessageBot(WhatsappBot):
     def auth_code(self) -> str | None:
         return self._auth_code
 
-    @staticmethod
-    def message() -> str:
-        messages = ["Добро пожаловать!", "Рады видеть вас!", "Приветствуем вас!"]
-        msg = random.choice(messages)
-        return msg
+    def message(self) -> str:
+        if self.messages:
+            return self.messages
 
     def send_messages(self):
         if not self.data:

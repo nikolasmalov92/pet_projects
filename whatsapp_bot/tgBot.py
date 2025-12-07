@@ -99,7 +99,8 @@ async def process_phone_number(message: Message):
 
                 else:
                     await message.answer("✅ Вы уже авторизованы!")
-                    await message.answer("📂 Пришлите файл с базой номеров (Excel или CSV) в чат.")
+                    await message.answer("Введите текст и картинку для рассылки")
+
             else:
                 await message.answer(f"❌ Ошибка авторизации: {auth_result.get('error', 'Неизвестная ошибка')}")
 
@@ -111,6 +112,22 @@ async def process_phone_number(message: Message):
         await message.answer("❌ Неверный формат номера.\n"
                              "Пожалуйста, введите номер в формате:\n"
                              "+7XXXXXXXXXX или 8XXXXXXXXXX")
+
+
+def parse_numbers(file_path: str):
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in [".xls", ".xlsx"]:
+        df = pd.read_excel(file_path)
+    elif ext == ".csv":
+        df = pd.read_csv(file_path)
+    else:
+        raise ValueError("Неподдерживаемый формат файла")
+
+    for col in df.columns:
+        if "phone" in col.lower() or "номер" in col.lower():
+            return [(str(x), str(x)) for x in df[col].dropna().tolist()]
+
+    return [(str(x), str(x)) for x in df.iloc[:, 0].dropna().tolist()]
 
 
 @dp.message(F.document)
@@ -140,20 +157,30 @@ async def handle_document(message: Message):
         await message.answer(f"❌ Ошибка при обработке файла: {e}")
 
 
-def parse_numbers(file_path: str):
-    ext = os.path.splitext(file_path)[1].lower()
-    if ext in [".xls", ".xlsx"]:
-        df = pd.read_excel(file_path)
-    elif ext == ".csv":
-        df = pd.read_csv(file_path)
-    else:
-        raise ValueError("Неподдерживаемый формат файла")
+@dp.message(F.text | F.photo)
+async def handle_media(message: Message):
+    user_id = message.from_user.id
+    if user_id not in user_bots:
+        user_bots[user_id] = MessageBot(user_id)
 
-    for col in df.columns:
-        if "phone" in col.lower() or "номер" in col.lower():
-            return [(str(x), str(x)) for x in df[col].dropna().tolist()]
+    bot_instance = user_bots[user_id]
 
-    return [(str(x), str(x)) for x in df.iloc[:, 0].dropna().tolist()]
+    if message.text:
+        bot_instance.message_text = message.text
+        await message.answer(f"📝 Получен текст: {message.text[:50]}...")
+
+    if message.photo:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+
+        file_info = await bot.get_file(file_id)
+        file_path = os.path.join(UPLOAD_DIR, f"{user_id}_photo_{file_id}.jpg")
+        await bot.download_file(file_info.file_path, file_path)
+
+        bot_instance.photo_path = file_path
+        await message.answer("🖼️ Картинка сохранена!")
+
+    await message.answer("📂 Пришлите файл с базой номеров (Excel или CSV) в чат.")
 
 
 async def main():
