@@ -3,10 +3,10 @@ import asyncio
 import logging
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher
-from ParfBar.handlers.user_handler import router as user_router
-from ParfBar.handlers.admin_handler import router as admin_router
-from ParfBar.CallbackData.callbacks import router as callback_router
-from ParfBar.database.db import init_db
+from handlers.user_handler import router as user_router
+from handlers.admin_handler import router as admin_router
+from CallbackData.callbacks import router as callback_router
+from database.db import init_db
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")

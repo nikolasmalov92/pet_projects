@@ -5,15 +5,15 @@ from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
-from ParfBar.handlers.catalog_handler import build_catalog_simple, get_price_catalog, generate_order_code, \
+from handlers.catalog_handler import build_catalog_simple, get_price_catalog, generate_order_code, \
     generate_payment_code
-from ParfBar.menu.catalog_menu import back_to_catalog, cancel_order, payment_done, confirm_payment_keyboard
-from ParfBar.database.db import get_all_products
-from ParfBar.CallbackData.states import OrderStates
+from menu.catalog_menu import back_to_catalog, cancel_order, payment_done, confirm_payment_keyboard
+from database.db import get_all_products
+from CallbackData.states import OrderStates
 
 from dotenv import load_dotenv
 
-from ParfBar.menu.main_menu import back_to_main_menu
+from menu.main_menu import back_to_main_menu
 
 load_dotenv()
 ADMIN_ID = json.loads(os.getenv('ADMIN_ID', '[]'))

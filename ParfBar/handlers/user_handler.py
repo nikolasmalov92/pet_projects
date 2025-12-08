@@ -6,11 +6,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from aiogram.filters import Command
 
-from ParfBar.CallbackData.states import OrderStates
-from ParfBar.handlers.catalog_handler import build_catalog_simple
-from ParfBar.menu.catalog_menu import cancel_order, pay_order
-from ParfBar.menu.main_menu import main_menu
-from ParfBar.database.db import get_all_products
+from CallbackData.states import OrderStates
+from handlers.catalog_handler import build_catalog_simple
+from menu.catalog_menu import cancel_order, pay_order
+from menu.main_menu import main_menu
+from database.db import get_all_products
 from dotenv import load_dotenv
 import os
 

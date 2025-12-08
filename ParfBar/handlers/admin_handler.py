@@ -8,9 +8,9 @@ from aiogram.types import Message
 from dotenv import load_dotenv
 from aiogram import Bot
 
-from ParfBar.menu.admin_menu import admin_menu_kb
-from ParfBar.menu.main_menu import main_menu
-from ParfBar.database.db import add_product, get_all_products, delete_product
+from menu.admin_menu import admin_menu_kb
+from menu.main_menu import main_menu
+from database.db import add_product, get_all_products, delete_product
 
 MEDIA_DIR = "media/products"
 os.makedirs(MEDIA_DIR, exist_ok=True)
