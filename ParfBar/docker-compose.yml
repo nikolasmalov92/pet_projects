@@ -1,0 +1,12 @@
+version: '3.11'
+
+services:
+  parfume-bot:
+    build: .
+    container_name: parf-bar-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    working_dir: /app
