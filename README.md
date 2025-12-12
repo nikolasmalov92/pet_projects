@@ -6,8 +6,7 @@
 
 ## 📂 Список проектов
 
-- 🌡️ **home_eco_climat** — управление кондиционером  
-- 🛒 **market_parser** — парсер товаров с Ozon  
+- 🌡️ **home_eco_climat** — управление кондиционером   
 - 🔌 **send_serial_port** — отправка данных через COM-порт  
 - 💬 **whatsapp_bot** — бот-отправитель в WhatsApp  
 
@@ -20,5 +19,3 @@
 
 ---
 
-## 📊 Статистика
-![GitHub Stats](https://github-readme-stats.vercel.app/api?username=nikolasmalov92&show_icons=true&theme=tokyonight)
