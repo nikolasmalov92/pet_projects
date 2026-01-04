@@ -3,6 +3,9 @@ import os
 import redis
 import hashlib
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 REDIS_HOST = os.getenv("REDIS_HOST")
@@ -21,9 +24,9 @@ class RedisCache:
 
         try:
             self.client.ping()
-            print("✅ Redis подключен")
+            logger.info("✅ Redis подключен")
         except redis.exceptions.ConnectionError:
-            print("❌ Не удалось подключиться к Redis")
+            logger.info("❌ Не удалось подключиться к Redis")
             self.client = None
 
     def clear_all(self):

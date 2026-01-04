@@ -6,7 +6,10 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from aiogram.types import Update
 import uvicorn
+from starlette.responses import HTMLResponse
+
 from app.bot import dp, bot
+from app.page import welcome_page
 
 load_dotenv()
 
@@ -41,6 +44,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telegram Bot", lifespan=lifespan)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    return welcome_page()
 
 
 @app.post("/webhook")

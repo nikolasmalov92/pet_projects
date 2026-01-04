@@ -2,6 +2,9 @@ import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from .api_assistant import Assistant
+import logging
+
+logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=BOT_TOKEN)
