@@ -1,7 +1,7 @@
 import requests
 import os
 from dotenv import load_dotenv
-from redis_cache import RedisCache
+from .redis_cache import RedisCache
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")

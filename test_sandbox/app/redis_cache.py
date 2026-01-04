@@ -1,12 +1,19 @@
+import os
+
 import redis
 import hashlib
+from dotenv import load_dotenv
+
+load_dotenv()
+REDIS_HOST = os.getenv("REDIS_HOST")
+REDIS_PORT = int(os.getenv("REDIS_PORT"))
 
 
 class RedisCache:
     def __init__(self):
         self.client = redis.Redis(
-            host='localhost',
-            port=6379,
+            host=REDIS_HOST,
+            port=REDIS_PORT,
             db=0,
             decode_responses=True,
             socket_connect_timeout=5
