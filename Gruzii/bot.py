@@ -4,6 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from filter import *
 from menu import *
@@ -13,7 +14,9 @@ from handler_add_user import router
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=telegram_token)
+session = AiohttpSession(timeout=120)
+
+bot = Bot(token=telegram_token, session=session)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 active_searches = {}
