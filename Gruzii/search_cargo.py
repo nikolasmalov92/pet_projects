@@ -57,8 +57,12 @@ async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
                             reply_markup=get_search_controls()
                         )
             else:
-                await message.answer("❌ Ошибка определения географических точек")
-                active_searches[user_id] = False
+                logging.warning(f"Не удалось определить гео-точки: {from_name} ({from_type}) → {to_name} ({to_type})")
+                await message.answer(
+                    f"❌ Не удалось определить маршрут: <b>{from_name} → {to_name}</b>\n"
+                    f"Проверьте правильность названий.",
+                    parse_mode="HTML"
+                )
                 break
         except Exception as e:
             logging.error(f"Ошибка поиска: {e}")
@@ -72,4 +76,3 @@ async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
             continue
         await asyncio.sleep(3 * 60)
     logging.info(f"Поиск для пользователя {user_id} завершен")
-    active_searches[user_id] = False

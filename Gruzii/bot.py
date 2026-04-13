@@ -124,8 +124,34 @@ async def set_to_type(message: Message, state: FSMContext):
 async def set_to_location(message: Message, state: FSMContext):
     location = message.text.strip().title()
     await state.update_data(to_location=location)
-    from filter import show_search_confirmation
-    await show_search_confirmation(message, state)
+    data = await state.get_data()
+
+    # Сохраняем текущий маршрут в список
+    routes = data.get('routes', [])
+    routes.append({
+        'from_location': data['from_location'],
+        'from_type': data['from_type'],
+        'from_type_name': data.get('from_type_name', ''),
+        'to_location': location,
+        'to_type': data['to_type'],
+        'to_type_name': data.get('to_type_name', ''),
+    })
+    await state.update_data(routes=routes)
+
+    # Формируем список маршрутов для отображения
+    routes_text = "\n".join(
+        f"  {i+1}. {r['from_location']} → {r['to_location']}"
+        for i, r in enumerate(routes)
+    )
+
+    await state.set_state(SearchStates.adding_route)
+    await message.answer(
+        f"✅ Маршрут добавлен!\n\n"
+        f"📋 <b>Текущие маршруты:</b>\n{routes_text}\n\n"
+        f"Добавить ещё маршрут или начать поиск?",
+        parse_mode="HTML",
+        reply_markup=get_add_route_keyboard()
+    )
 
 
 @dp.callback_query(StateFilter(WeightStates.setting_weight))
@@ -166,12 +192,45 @@ async def handle_car_load_type_selection(callback: CallbackQuery, state: FSMCont
     await process_car_load_type_selection(callback, state)
 
 
-@dp.callback_query(F.data == "confirm_search_start", StateFilter(SearchStates.confirming_search))
-async def confirm_search(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "add_another_route", StateFilter(SearchStates.adding_route))
+async def add_another_route(callback: CallbackQuery, state: FSMContext):
+    """Пользователь хочет добавить ещё один маршрут"""
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await state.set_state(SearchStates.setting_from_type)
+    await callback.message.answer(
+        "📍 <b>Новый маршрут</b>\n\n"
+        "Откуда отправляем груз?\n"
+        "Выберите тип географической точки:",
+        parse_mode="HTML",
+        reply_markup=get_type_keyboard()
+    )
+
+
+@dp.callback_query(F.data.startswith("filter_"), StateFilter(SearchStates.adding_route))
+async def handle_filter_from_add_route(callback: CallbackQuery, state: FSMContext):
+    """Фильтр из меню добавления маршрута"""
+    await start_filter_setup(callback, state)
+
+
+@dp.callback_query(F.data == "confirm_search_start", StateFilter(SearchStates.adding_route))
+async def confirm_search_from_add_route(callback: CallbackQuery, state: FSMContext):
+    """Начать поиск из меню добавления маршрута"""
+    await state.set_state(SearchStates.confirming_search)
+    # Переиспользуем логику confirm_search напрямую
     data = await state.get_data()
     user_id = callback.from_user.id
     active_searches[user_id] = True
-    search_info = f"🔍 Ищу грузы: {data['from_location']} → {data['to_location']}"
+
+    routes = data.get('routes', [])
+    if routes:
+        routes_text = "\n".join(
+            f"  {i+1}. {r['from_location']} → {r['to_location']}"
+            for i, r in enumerate(routes)
+        )
+        search_info = f"🔍 Ищу грузы:\n{routes_text}"
+    else:
+        search_info = f"🔍 Ищу грузы: {data['from_location']} → {data['to_location']}"
+
     filters_applied = []
     if data.get('weight_from'):
         filters_applied.append(f"вес от {data['weight_from']} т")
@@ -183,6 +242,7 @@ async def confirm_search(callback: CallbackQuery, state: FSMContext):
         filters_applied.append(f"объем до {data['volume_to']} м³")
     if filters_applied:
         search_info += f"\n🎯 Фильтры: {', '.join(filters_applied)}"
+
     await callback.message.edit_text(
         f"🚀 <b>Поиск запущен!</b>\n\n{search_info}\n"
         "⏳ Первые результаты появятся через несколько секунд...",
@@ -194,23 +254,107 @@ async def confirm_search(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML",
         reply_markup=get_search_controls()
     )
-    logging.info(f"Поиск для user_id={user_id}: from={data['from_location']}, to={data['to_location']}, "
-                 f"weight_from={data.get('weight_from')}, weight_to={data.get('weight_to')}, "
-                 f"volume_from={data.get('volume_from')}, volume_to={data.get('volume_to')}")
-    await asyncio.create_task(search_cargo_for_user(
-        user_id,
-        data['from_location'],
-        data['from_type'],
-        data['to_location'],
-        data['to_type'],
-        data.get('weight_from'),
-        data.get('weight_to'),
-        callback.message,
-        data.get('volume_from'),
-        data.get('volume_to'),
-        active_searches,
-        data.get('car_load_type_ids')
-    ))
+
+    search_routes = routes if routes else [{
+        'from_location': data['from_location'],
+        'from_type': data['from_type'],
+        'to_location': data['to_location'],
+        'to_type': data['to_type'],
+    }]
+
+    for route in search_routes:
+        logging.info(
+            f"Поиск для user_id={user_id}: from={route['from_location']}, to={route['to_location']}, "
+            f"weight_from={data.get('weight_from')}, weight_to={data.get('weight_to')}, "
+            f"volume_from={data.get('volume_from')}, volume_to={data.get('volume_to')}"
+        )
+        await asyncio.create_task(search_cargo_for_user(
+            user_id,
+            route['from_location'],
+            route['from_type'],
+            route['to_location'],
+            route['to_type'],
+            data.get('weight_from'),
+            data.get('weight_to'),
+            callback.message,
+            data.get('volume_from'),
+            data.get('volume_to'),
+            active_searches,
+            data.get('car_load_type_ids')
+        ))
+
+
+
+@dp.callback_query(F.data == "confirm_search_start", StateFilter(SearchStates.confirming_search))
+async def confirm_search(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    user_id = callback.from_user.id
+    active_searches[user_id] = True
+
+    routes = data.get('routes', [])
+
+    # Формируем текст с маршрутами
+    if routes:
+        routes_text = "\n".join(
+            f"  {i+1}. {r['from_location']} → {r['to_location']}"
+            for i, r in enumerate(routes)
+        )
+        search_info = f"🔍 Ищу грузы:\n{routes_text}"
+    else:
+        search_info = f"🔍 Ищу грузы: {data['from_location']} → {data['to_location']}"
+
+    filters_applied = []
+    if data.get('weight_from'):
+        filters_applied.append(f"вес от {data['weight_from']} т")
+    if data.get('weight_to'):
+        filters_applied.append(f"до {data['weight_to']} т")
+    if data.get('volume_from'):
+        filters_applied.append(f"объем от {data['volume_from']} м³")
+    if data.get('volume_to'):
+        filters_applied.append(f"объем до {data['volume_to']} м³")
+    if filters_applied:
+        search_info += f"\n🎯 Фильтры: {', '.join(filters_applied)}"
+
+    await callback.message.edit_text(
+        f"🚀 <b>Поиск запущен!</b>\n\n{search_info}\n"
+        "⏳ Первые результаты появятся через несколько секунд...",
+        parse_mode="HTML"
+    )
+    await state.set_state(SearchStates.searching)
+    await callback.message.answer(
+        "🎛️ <b>Управление поиском:</b>",
+        parse_mode="HTML",
+        reply_markup=get_search_controls()
+    )
+
+    # Запускаем поиск для каждого маршрута
+    search_routes = routes if routes else [{
+        'from_location': data['from_location'],
+        'from_type': data['from_type'],
+        'to_location': data['to_location'],
+        'to_type': data['to_type'],
+    }]
+
+    for route in search_routes:
+        logging.info(
+            f"Поиск для user_id={user_id}: from={route['from_location']}, to={route['to_location']}, "
+            f"weight_from={data.get('weight_from')}, weight_to={data.get('weight_to')}, "
+            f"volume_from={data.get('volume_from')}, volume_to={data.get('volume_to')}"
+        )
+        await asyncio.create_task(search_cargo_for_user(
+            user_id,
+            route['from_location'],
+            route['from_type'],
+            route['to_location'],
+            route['to_type'],
+            data.get('weight_from'),
+            data.get('weight_to'),
+            callback.message,
+            data.get('volume_from'),
+            data.get('volume_to'),
+            active_searches,
+            data.get('car_load_type_ids')
+        ))
 
 
 @dp.callback_query(F.data == "cancel")

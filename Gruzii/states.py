@@ -6,8 +6,14 @@ class SearchStates(StatesGroup):
     setting_from_location = State()
     setting_to_type = State()
     setting_to_location = State()
+    adding_route = State()
     confirming_search = State()
     searching = State()
+
+
+class MultiRouteStates(StatesGroup):
+    managing_routes = State()
+    editing_route = State()
 
 
 class FilterStates(SearchStates):

@@ -14,6 +14,19 @@ def get_main_menu():
     return keyboard
 
 
+
+def get_route_management_keyboard():
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="➕ Добавить ещё")],
+            [KeyboardButton(text="🗑 Удалить последнее")],
+            [KeyboardButton(text="Начать поиск")]
+        ],
+        resize_keyboard=True
+    )
+    return keyboard
+
+
 def get_type_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
@@ -42,6 +55,21 @@ def get_search_controls():
         resize_keyboard=True,
         one_time_keyboard=False
     )
+    return keyboard
+
+
+def get_add_route_keyboard():
+    """Клавиатура после ввода маршрута: добавить ещё или начать поиск"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➕ Добавить ещё", callback_data="add_another_route"),
+            InlineKeyboardButton(text="⚙️ Фильтр", callback_data="filter_search_start"),
+            InlineKeyboardButton(text="🔍 Начать поиск", callback_data="confirm_search_start"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
+        ]
+    ])
     return keyboard
 
 
