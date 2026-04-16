@@ -35,3 +35,9 @@ class VolumeStates(StatesGroup):
 class CarLoadTypeStates(StatesGroup):
     setting_car_load_type = State()
     selecting_car_load_type = State()
+
+
+class AdminStates(StatesGroup):
+    waiting_for_subscription_id = State()
+    waiting_for_take_subscription_id = State()
+    waiting_for_delete_user_id = State()

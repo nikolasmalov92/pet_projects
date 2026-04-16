@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from config import *
 import sqlite3
+from datetime import datetime, timedelta
 
 carTypes_file = Path("car_types.json")
 processed_file = Path("processed.json")
@@ -13,7 +14,16 @@ def init_db():
     """Инициализация базы данных и создание таблиц"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS Users (id INTEGER PRIMARY KEY)''')
+    cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Subscriptions (
+                user_id INTEGER PRIMARY KEY,
+                start_time TIMESTAMP NOT NULL,
+                end_time TIMESTAMP NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                subscription_type TEXT NOT NULL DEFAULT 'trial',
+                trial_used BOOLEAN DEFAULT 0
+            )
+        ''')
     conn.commit()
     conn.close()
 
@@ -25,7 +35,7 @@ def load_users() -> list[int]:
 
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM Users ORDER BY id")
+    cursor.execute("SELECT DISTINCT user_id FROM Subscriptions ORDER BY user_id")
     users = [row[0] for row in cursor.fetchall()]
     return users
 
@@ -37,13 +47,21 @@ def save_user(user_id: int):
 
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO Users (id) VALUES (?)", (user_id,))
-    conn.commit()
-    if cursor.rowcount > 0:
+    cursor.execute("SELECT user_id FROM Subscriptions WHERE user_id = ?", (user_id,))
+    exists = cursor.fetchone()
+    if not exists:
+        now = datetime.now()
+        # Создаём уже истекшую подписку, чтобы пользователь был в базе
+        cursor.execute('''
+                INSERT INTO Subscriptions (user_id, start_time, end_time, is_active, subscription_type, trial_used)
+                VALUES (?, ?, ?, 0, 'trial', 0)
+            ''', (user_id, now, now - timedelta(days=1)))
+        conn.commit()
+        conn.close()
         return True
 
-    else:
-        return False
+    conn.close()
+    return False
 
 
 def load_processed(user_id):

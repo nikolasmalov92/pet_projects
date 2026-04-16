@@ -3,16 +3,33 @@ from config import *
 from storage import get_car_loading_types
 
 
-def get_main_menu():
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🔍 Найти грузы")]
-        ],
+def get_main_menu(has_subscription=False, subscription_time_remaining=None, is_admin=False):
+    keyboard = []
+
+    # Админские кнопки
+    if is_admin:
+        keyboard.append([KeyboardButton(text="🛠 Админ-панель")])
+        keyboard.append([KeyboardButton(text="🔍 Найти грузы")])
+        return ReplyKeyboardMarkup(
+            keyboard=keyboard,
+            resize_keyboard=True,
+            input_field_placeholder="Выберите действие..."
+        )
+
+    # Кнопка поиска грузов (только если есть активная подписка)
+    if has_subscription:
+        if subscription_time_remaining:
+            keyboard.append([KeyboardButton(text=f"🔍 Найти грузы ({subscription_time_remaining})")])
+        else:
+            keyboard.append([KeyboardButton(text="🔍 Найти грузы")])
+    else:
+        keyboard.append([KeyboardButton(text="📝 Подписаться")])
+
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
         resize_keyboard=True,
         input_field_placeholder="Выберите действие..."
     )
-    return keyboard
-
 
 
 def get_route_management_keyboard():
