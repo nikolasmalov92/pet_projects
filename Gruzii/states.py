@@ -9,6 +9,10 @@ class SearchStates(StatesGroup):
     adding_route = State()
     confirming_search = State()
     searching = State()
+    setting_from_radius = State()
+    setting_from_radius_custom = State()
+    setting_to_radius = State()
+    setting_to_radius_custom = State()
 
 
 class MultiRouteStates(StatesGroup):

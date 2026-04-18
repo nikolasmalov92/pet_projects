@@ -4,6 +4,10 @@ from datetime import datetime
 from config import *
 import sqlite3
 from datetime import datetime, timedelta
+import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 carTypes_file = Path("car_types.json")
 processed_file = Path("processed.json")
@@ -51,7 +55,6 @@ def save_user(user_id: int):
     exists = cursor.fetchone()
     if not exists:
         now = datetime.now()
-        # Создаём уже истекшую подписку, чтобы пользователь был в базе
         cursor.execute('''
                 INSERT INTO Subscriptions (user_id, start_time, end_time, is_active, subscription_type, trial_used)
                 VALUES (?, ?, ?, 0, 'trial', 0)
@@ -65,13 +68,31 @@ def save_user(user_id: int):
 
 
 def load_processed(user_id):
-    if os.path.exists(processed_file):
+    """Загружает список обработанных грузов для пользователя"""
+    try:
+        if not os.path.exists(processed_file):
+            return []
+
         with open(processed_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-            for user_data in data:
-                if user_data.get('user_id') == str(user_id):
-                    return user_data.get('processed_cargos', [])
-    else:
+
+        if not isinstance(data, list):
+            return []
+
+        for user_data in data:
+            if isinstance(user_data, dict) and user_data.get('user_id') == str(user_id):
+                processed = user_data.get('processed_cargos')
+                if processed is None:
+                    return []
+                if isinstance(processed, list):
+                    return processed
+                else:
+                    return []
+        return []
+    except Exception as e:
+        logging.error(f"Ошибка загрузки processed для user_id {user_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return []
 
 
@@ -146,11 +167,50 @@ def save_data_cargo(data):
 
 
 def get_car_types_name(ids):
-    data = load_car_types()
-    id_list = [x.strip() for x in ids.split(",")]
+    """
+    Получает названия типов транспорта по их ID.
 
-    names = [i.get("Name") for i in data if str(i.get("Id")) in id_list]
-    return ", ".join(names) if names else "Не найдено"
+    :param ids: может быть строкой с ID через запятую (например "1,2,3") или списком ID (например [1,2,3])
+    :return: строка с названиями через запятую
+    """
+    # Если ids - это список
+    if isinstance(ids, list):
+        id_list = [str(x) for x in ids]
+    # Если ids - это строка
+    elif isinstance(ids, str):
+        if not ids:
+            return "Не указан"
+        id_list = [x.strip() for x in ids.split(",")]
+    else:
+        return "Не указан"
+
+    # Получаем названия из базы данных
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    # Создаём таблицу если её нет
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS car_types (
+            id INTEGER PRIMARY KEY,
+            name TEXT
+        )
+    ''')
+
+    names = []
+    for id_str in id_list:
+        try:
+            id_int = int(id_str)
+            cursor.execute('SELECT name FROM car_types WHERE id = ?', (id_int,))
+            result = cursor.fetchone()
+            if result:
+                names.append(result[0])
+            else:
+                names.append(f"Тип {id_int}")
+        except ValueError:
+            names.append(id_str)
+
+    conn.close()
+    return ", ".join(names) if names else "Не указан"
 
 
 def formatted_date(date_str):

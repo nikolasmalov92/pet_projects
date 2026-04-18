@@ -47,7 +47,8 @@ def get_route_management_keyboard():
 def get_type_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🏙️ Город"), KeyboardButton(text="🌍 Регион")],
+            [KeyboardButton(text="🏙️ Город"),
+             KeyboardButton(text="🌍 Регион")],
             [KeyboardButton(text="🗺️ Страна")],
             [KeyboardButton(text="🔙 Назад")]
         ],
@@ -59,7 +60,8 @@ def get_type_keyboard():
 
 def menu_details(load_id):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Подробнее", url=f"{loads_url}/loadinfo/{load_id}")]
+        [InlineKeyboardButton(text="📋 Подробнее",
+                              url=f"{loads_url}/loadinfo/{load_id}")]
     ])
     return keyboard
 
@@ -161,3 +163,39 @@ def get_car_load_type_keyboard(selected_ids=None):
     keyboard.append([InlineKeyboardButton(text="🆗 Применить", callback_data="apply_load_type_selection")])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_radius_keyboard():
+    """Inline-клавиатура для быстрого выбора радиуса отгрузки/выгрузки (км)."""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="50 км", callback_data="radius_50"),
+            InlineKeyboardButton(text="100 км", callback_data="radius_100"),
+            InlineKeyboardButton(text="200 км", callback_data="radius_200"),
+        ],
+        [
+            InlineKeyboardButton(text="300 км", callback_data="radius_300"),
+            InlineKeyboardButton(text="500 км", callback_data="radius_500"),
+            InlineKeyboardButton(text="✏️ Своё", callback_data="radius_custom"),
+        ],
+        [
+            InlineKeyboardButton(text="Без радиуса", callback_data="radius_none"),
+        ]
+    ])
+    return keyboard
+
+
+def get_to_type_keyboard():
+    """Клавиатура для выбора типа пункта назначения.
+    Добавлена кнопка «Любое направление» — поиск без ограничения куда."""
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🏙️ Город"), KeyboardButton(text="🌍 Регион")],
+            [KeyboardButton(text="🗺️ Страна")],
+            [KeyboardButton(text="🌐 Любое направление")],
+            [KeyboardButton(text="🔙 Назад")]
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Выберите тип или любое направление..."
+    )
+    return keyboard

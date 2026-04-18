@@ -1,5 +1,8 @@
 import requests
 from storage import *
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
 class AtiClient:
@@ -24,39 +27,58 @@ class AtiClient:
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code == 200:
             data = response.json()
-            if geo_type == 0:
-                return data['suggestions'][0].get('country', {}).get('id')
-            elif geo_type == 1:
-                return data['suggestions'][0].get('region', {}).get('id')
-            else:
-                return data['suggestions'][0].get('city', {}).get('id')
+            if data.get('suggestions'):
+                if geo_type == 0:
+                    return data['suggestions'][0].get('country', {}).get('id')
+                elif geo_type == 1:
+                    return data['suggestions'][0].get('region', {}).get('id')
+                else:
+                    return data['suggestions'][0].get('city', {}).get('id')
+        return None
 
     def get_cargo(self, from_id, from_type, to_id, to_type,
                   weight_from=None, weight_to=None,
                   volume_from=None, volume_to=None,
-                  car_load_type_ids=None):
+                  car_load_type_ids=None,
+                  from_radius=None, to_radius=None, any_direction=False):
         """
-        Возвращает список новых грузов с фильтрацией по весу.
-        :param car_load_type_ids: Список ID типов загрузки (опционально)
-        :param volume_from: Минимальный объём (опционально)
-        :param volume_to: Максимальный объём (опционально)
+        Возвращает список новых грузов с фильтрацией по весу, объёму и радиусу.
+
         :param from_id: ID начальной точки
         :param from_type: Тип начальной точки
         :param to_id: ID конечной точки
         :param to_type: Тип конечной точки
         :param weight_from: Минимальный вес (опционально)
         :param weight_to: Максимальный вес (опционально)
-        :return: list
+        :param volume_from: Минимальный объём (опционально)
+        :param volume_to: Максимальный объём (опционально)
+        :param car_load_type_ids: Список ID типов загрузки (опционально)
+        :param from_radius: Радиус от точки отправления в км (опционально)
+        :param to_radius: Радиус от точки назначения в км (опционально)
+        :param any_direction: Искать без ограничения направления (опционально)
+        :return: dict
         """
-        global loading_type
         url = f"{self.loads_url}/webapi/v1.0/loads/search"
+
+        # Формируем фильтр для точки отправления
+        from_filter = {"id": from_id, "type": from_type, "exact_only": False}
+        if from_radius and from_radius > 0:
+            from_filter["fromRadius"] = from_radius
+
+        # Формируем фильтр для точки назначения (только если не режим "любое направление")
+        to_filter = None
+        if not any_direction and to_id:
+            to_filter = {"id": to_id, "type": to_type, "exact_only": False}
+            if to_radius and to_radius > 0:
+                to_filter["toRadius"] = to_radius
+
+        # Базовый payload
         payload = {
             "exclude_geo_dicts": True,
             "page": 1,
             "items_per_page": 10,
             "filter": {
-                "from": {"id": from_id, "type": from_type, "exact_only": False},
-                "to": {"id": to_id, "type": to_type, "exact_only": False},
+                "from": from_filter,
                 "dates": {"date_option": "today-plus"},
                 "exclude_tenders": False,
                 "change_date": 3,
@@ -65,6 +87,11 @@ class AtiClient:
             }
         }
 
+        # Добавляем точку назначения только если есть
+        if to_filter:
+            payload["filter"]["to"] = to_filter
+
+        # Фильтр по весу
         if weight_from is not None or weight_to is not None:
             payload["filter"]["weight"] = {}
             if weight_from is not None:
@@ -72,33 +99,37 @@ class AtiClient:
             if weight_to is not None:
                 payload["filter"]["weight"]["max"] = weight_to
 
+        # Фильтр по объёму (ИСПРАВЛЕНО: были ошибки с weight_from/weight_to)
         if volume_from is not None or volume_to is not None:
             payload["filter"]["volume"] = {}
-            if weight_from is not None:
+            if volume_from is not None:
                 payload["filter"]["volume"]["min"] = volume_from
-            if weight_to is not None:
+            if volume_to is not None:
                 payload["filter"]["volume"]["max"] = volume_to
 
+        # Фильтр по типу загрузки
         if car_load_type_ids:
             if len(car_load_type_ids) == 1:
                 loading_type = str(car_load_type_ids[0])
             else:
                 loading_type = str(sum(car_load_type_ids))
-
             payload["filter"]["loading_type"] = loading_type
 
         response = requests.post(url, headers=headers, json=payload)
 
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            return data
         else:
-            return []
+            logging.error(f'-- API error: {response.status_code} - {response.text}')
+            return {'totalItems': 0, 'loads': []}
 
     def carTypes(self):
         url = f"{self.base_url}/v1.0/dictionaries/carTypes"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             return response.json()
+        return []
 
     @staticmethod
     def get_all_cities():
@@ -109,6 +140,7 @@ class AtiClient:
             data = response.json()
             for item in data:
                 city.append({"CityName": item.get("CityName")})
+        return city
 
     @staticmethod
     def loadingTypes():
@@ -116,3 +148,4 @@ class AtiClient:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             return response.json()
+        return []

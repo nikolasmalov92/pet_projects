@@ -56,14 +56,25 @@ async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
 
 async def show_search_confirmation(message: Message, state: FSMContext):
     """
-    Показывает подтверждение параметров поиска с учетом фильтров.
+    Показывает подтверждение параметров поиска с учетом фильтров и радиуса.
     """
     data = await state.get_data()
-    summary = (
-        "📋 <b>Параметры поиска:</b>\n\n"
-        f"📍 <b>Откуда:</b> {data['from_location']} ({data['from_type_name']})\n"
-        f"🏁 <b>Куда:</b> {data['to_location']} ({data['to_type_name']})\n"
-    )
+
+    # ─── Пункт отправления ────────────────────────────────────────────────────
+    from_radius = data.get('from_radius')
+    from_radius_str = f", радиус {from_radius} км" if from_radius else ""
+    from_line = f"📍 <b>Откуда:</b> {data['from_location']} ({data['from_type_name']}{from_radius_str})\n"
+
+    # ─── Пункт назначения (может быть «любое направление») ───────────────────
+    any_direction = data.get('any_direction', False)
+    if any_direction:
+        to_line = "🌐 <b>Куда:</b> Любое направление\n"
+    else:
+        to_radius = data.get('to_radius')
+        to_radius_str = f", радиус {to_radius} км" if to_radius else ""
+        to_line = f"🏁 <b>Куда:</b> {data.get('to_location', '—')} ({data.get('to_type_name', '—')}{to_radius_str})\n"
+
+    summary = "📋 <b>Параметры поиска:</b>\n\n" + from_line + to_line
 
     weight_from = data.get('weight_from')
     weight_to = data.get('weight_to')

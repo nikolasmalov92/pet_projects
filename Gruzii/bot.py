@@ -661,21 +661,110 @@ async def set_from_type(message: Message, state: FSMContext):
 async def set_from_location(message: Message, state: FSMContext):
     location = message.text.strip().title()
     await state.update_data(from_location=location)
-    await state.set_state(SearchStates.setting_to_type)
+    await state.set_state(SearchStates.setting_from_radius)
     await message.answer(
         f"✅ Пункт отправления: <b>{location}</b>\n\n"
-        "📍 <b>Шаг 2 из 4:</b> Куда доставляем?\n"
-        "Выберите тип географической точки назначения:",
+        "📍 <b>Шаг 1б:</b> Укажите радиус поиска от этой точки\n"
+        "(например, «Челябинск, радиус 300 км» — бот найдёт грузы из города и его окрестностей):",
         parse_mode="HTML",
-        reply_markup=get_type_keyboard()
+        reply_markup=get_radius_keyboard()
+    )
+
+
+@dp.callback_query(StateFilter(SearchStates.setting_from_radius))
+async def handle_from_radius(callback: CallbackQuery, state: FSMContext):
+    data_cb = callback.data
+
+    if data_cb == "radius_none":
+        await state.update_data(from_radius=None)
+        await _ask_to_type(callback.message, state)
+        await callback.answer()
+
+    elif data_cb == "radius_custom":
+        await state.set_state(SearchStates.setting_from_radius_custom)
+        await callback.message.edit_text(
+            "✏️ Введите радиус отгрузки в километрах (целое число, например 300):",
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    elif data_cb.startswith("radius_"):
+        km = int(data_cb.split("_")[1])
+        await state.update_data(from_radius=km)
+        await _ask_to_type(callback.message, state)
+        await callback.answer()
+
+
+@dp.message(StateFilter(SearchStates.setting_from_radius_custom))
+async def handle_from_radius_custom(message: Message, state: FSMContext):
+    try:
+        km = int(message.text.strip())
+        if km <= 0:
+            raise ValueError
+        await state.update_data(from_radius=km)
+        await _ask_to_type(message, state)
+    except ValueError:
+        await message.answer("❌ Введите целое положительное число (например, 300):")
+
+
+async def _ask_to_type(message, state: FSMContext):
+    """Переход к выбору типа пункта назначения."""
+    await state.set_state(SearchStates.setting_to_type)
+    await message.answer(
+        "📍 <b>Шаг 2 из 4:</b> Куда доставляем?\n"
+        "Выберите тип географической точки назначения\n"
+        "или нажмите <b>«🌐 Любое направление»</b> — бот будет отслеживать все рейсы из этой точки:",
+        parse_mode="HTML",
+        reply_markup=get_to_type_keyboard()  # ← новая клавиатура с кнопкой «Любое направление»
     )
 
 
 @dp.message(StateFilter(SearchStates.setting_to_type))
 async def set_to_type(message: Message, state: FSMContext):
-    text = message.text.replace("🏙️ ", "").replace("🌍 ", "").replace("🗺️ ", "")
+    text = message.text.replace("🏙️ ", "").replace("🌍 ", "").replace("🗺️ ", "").replace("🌐 ", "")
+
+    # ── НОВОЕ: режим «Любое направление» ──────────────────────────────────────
+    if text == "Любое направление":
+        await state.update_data(
+            any_direction=True,
+            to_location=None,
+            to_type=None,
+            to_type_name="Любое направление",
+            to_radius=None,
+        )
+        # Сразу сохраняем маршрут (без точки назначения) и показываем итог
+        data = await state.get_data()
+        routes = data.get('routes', [])
+        routes.append({
+            'from_location': data['from_location'],
+            'from_type': data['from_type'],
+            'from_type_name': data.get('from_type_name', ''),
+            'from_radius': data.get('from_radius'),
+            'to_location': None,
+            'to_type': None,
+            'to_type_name': 'Любое направление',
+            'to_radius': None,
+            'any_direction': True,
+        })
+        await state.update_data(routes=routes)
+
+        routes_text = "\n".join(
+            f"  {i + 1}. {r['from_location']} → {r.get('to_location') or '🌐 Любое'}"
+            for i, r in enumerate(routes)
+        )
+        await state.set_state(SearchStates.adding_route)
+        from menu import get_add_route_keyboard
+        await message.answer(
+            f"✅ Маршрут добавлен!\n\n"
+            f"📋 <b>Текущие маршруты:</b>\n{routes_text}\n\n"
+            "Добавить ещё маршрут или начать поиск?",
+            parse_mode="HTML",
+            reply_markup=get_add_route_keyboard()
+        )
+        return
+
     if text in ["Город", "Регион", "Страна"]:
-        await state.update_data(to_type=get_type_id(text), to_type_name=text)
+        await state.update_data(to_type=get_type_id(text), to_type_name=text, any_direction=False)
         await state.set_state(SearchStates.setting_to_location)
         emoji_map = {"Город": "🏙️", "Регион": "🌍", "Страна": "🗺️"}
         await message.answer(
@@ -684,7 +773,6 @@ async def set_to_type(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
     elif text == "🔙 Назад":
-        # Проверяем подписку
         user_id = message.from_user.id
         has_subscription = subscription_manager.is_subscription_active(user_id)
         time_remaining = None
@@ -696,43 +784,92 @@ async def set_to_type(message: Message, state: FSMContext):
         await message.answer(
             "📍 Введите название пункта отправления:",
             parse_mode="HTML",
-            reply_markup=get_main_menu(has_subscription=has_subscription, subscription_time_remaining=time_remaining, is_admin=is_admin)
+            reply_markup=get_main_menu(
+                has_subscription=has_subscription,
+                subscription_time_remaining=time_remaining,
+                is_admin=is_admin
+            )
         )
-
 
 @dp.message(StateFilter(SearchStates.setting_to_location))
 async def set_to_location(message: Message, state: FSMContext):
     location = message.text.strip().title()
     await state.update_data(to_location=location)
-    data = await state.get_data()
+    await state.set_state(SearchStates.setting_to_radius)
+    await message.answer(
+        f"✅ Пункт назначения: <b>{location}</b>\n\n"
+        "🏁 <b>Шаг 3б:</b> Радиус у пункта назначения?",
+        parse_mode="HTML",
+        reply_markup=get_radius_keyboard()
+    )
 
-    # Сохраняем текущий маршрут в список
+
+@dp.callback_query(StateFilter(SearchStates.setting_to_radius))
+async def handle_to_radius(callback: CallbackQuery, state: FSMContext):
+    data_cb = callback.data
+
+    if data_cb == "radius_none":
+        await state.update_data(to_radius=None)
+        await _finish_route(callback.message, state)
+        await callback.answer()
+
+    elif data_cb == "radius_custom":
+        await state.set_state(SearchStates.setting_to_radius_custom)
+        await callback.message.edit_text(
+            "✏️ Введите радиус выгрузки в километрах (целое число, например 150):",
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+    elif data_cb.startswith("radius_"):
+        km = int(data_cb.split("_")[1])
+        await state.update_data(to_radius=km)
+        await _finish_route(callback.message, state)
+        await callback.answer()
+
+
+@dp.message(StateFilter(SearchStates.setting_to_radius_custom))
+async def handle_to_radius_custom(message: Message, state: FSMContext):
+    try:
+        km = int(message.text.strip())
+        if km <= 0:
+            raise ValueError
+        await state.update_data(to_radius=km)
+        await _finish_route(message, state)
+    except ValueError:
+        await message.answer("❌ Введите целое положительное число (например, 150):")
+
+
+async def _finish_route(message, state: FSMContext):
+    """Сохраняем маршрут и показываем список маршрутов."""
+    data = await state.get_data()
     routes = data.get('routes', [])
     routes.append({
         'from_location': data['from_location'],
         'from_type': data['from_type'],
         'from_type_name': data.get('from_type_name', ''),
-        'to_location': location,
+        'from_radius': data.get('from_radius'),
+        'to_location': data['to_location'],
         'to_type': data['to_type'],
         'to_type_name': data.get('to_type_name', ''),
+        'to_radius': data.get('to_radius'),
+        'any_direction': False,
     })
     await state.update_data(routes=routes)
 
-    # Формируем список маршрутов для отображения
     routes_text = "\n".join(
-        f"  {i+1}. {r['from_location']} → {r['to_location']}"
+        f"  {i + 1}. {r['from_location']} → {r.get('to_location') or '🌐 Любое'}"
         for i, r in enumerate(routes)
     )
-
     await state.set_state(SearchStates.adding_route)
+    from menu import get_add_route_keyboard
     await message.answer(
         f"✅ Маршрут добавлен!\n\n"
         f"📋 <b>Текущие маршруты:</b>\n{routes_text}\n\n"
-        f"Добавить ещё маршрут или начать поиск?",
+        "Добавить ещё маршрут или начать поиск?",
         parse_mode="HTML",
         reply_markup=get_add_route_keyboard()
     )
-
 
 @dp.callback_query(StateFilter(WeightStates.setting_weight))
 async def handle_weight_range(callback: CallbackQuery, state: FSMContext):
@@ -796,7 +933,6 @@ async def handle_filter_from_add_route(callback: CallbackQuery, state: FSMContex
 async def confirm_search_from_add_route(callback: CallbackQuery, state: FSMContext):
     """Начать поиск из меню добавления маршрута"""
     await state.set_state(SearchStates.confirming_search)
-    # Переиспользуем логику confirm_search напрямую
     data = await state.get_data()
     user_id = callback.from_user.id
     active_searches[user_id] = True
@@ -843,25 +979,22 @@ async def confirm_search_from_add_route(callback: CallbackQuery, state: FSMConte
     }]
 
     for route in search_routes:
-        logging.info(
-            f"Поиск для user_id={user_id}: from={route['from_location']}, to={route['to_location']}, "
-            f"weight_from={data.get('weight_from')}, weight_to={data.get('weight_to')}, "
-            f"volume_from={data.get('volume_from')}, volume_to={data.get('volume_to')}"
-        )
         task = asyncio.create_task(search_cargo_for_user(
-            user_id,
-            route['from_location'],
-            route['from_type'],
-            route['to_location'],
-            route['to_type'],
-            data.get('weight_from'),
-            data.get('weight_to'),
-            callback.message,
-            data.get('volume_from'),
-            data.get('volume_to'),
-            active_searches,
-            data.get('car_load_type_ids')
-        ))
+          user_id,
+          route['from_location'],
+          route['from_type'],
+          route.get('to_location'),
+          route.get('to_type'),
+          data.get('weight_from'),
+          data.get('weight_to'),
+          callback.message,
+          data.get('volume_from'),
+          data.get('volume_to'),
+          active_searches,
+          data.get('car_load_type_ids'),
+          from_radius=route.get('from_radius'),
+          to_radius=route.get('to_radius'),
+          any_direction=route.get('any_direction', False),))
         tasks[user_id] = task
 
 @dp.callback_query(F.data == "confirm_search_start", StateFilter(SearchStates.confirming_search))
@@ -932,7 +1065,10 @@ async def confirm_search(callback: CallbackQuery, state: FSMContext):
             data.get('volume_from'),
             data.get('volume_to'),
             active_searches,
-            data.get('car_load_type_ids')
+            data.get('car_load_type_ids'),
+            from_radius=route.get('from_radius'),
+            to_radius=route.get('to_radius'),
+            any_direction=route.get('any_direction', False),
         ))
 
 
