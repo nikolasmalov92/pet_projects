@@ -1,6 +1,8 @@
-import requests
-from storage import *
+import json
 import logging
+import requests
+
+from Gruzii.config import base_url, loads_url, headers
 
 logging.basicConfig(level=logging.INFO)
 
@@ -37,9 +39,10 @@ class AtiClient:
         return None
 
     def get_cargo(self, from_id, from_type, to_id, to_type,
-                  weight_from=None, weight_to=None,
+                  weight_min=None, weight_max=None,
                   volume_from=None, volume_to=None,
                   car_load_type_ids=None,
+                  car_type_ids=None,
                   from_radius=None, to_radius=None, any_direction=False):
         """
         Возвращает список новых грузов с фильтрацией по весу, объёму и радиусу.
@@ -48,11 +51,12 @@ class AtiClient:
         :param from_type: Тип начальной точки
         :param to_id: ID конечной точки
         :param to_type: Тип конечной точки
-        :param weight_from: Минимальный вес (опционально)
-        :param weight_to: Максимальный вес (опционально)
+        :param weight_min: Минимальный вес (опционально)
+        :param weight_max: Максимальный вес (опционально)
         :param volume_from: Минимальный объём (опционально)
         :param volume_to: Максимальный объём (опционально)
         :param car_load_type_ids: Список ID типов загрузки (опционально)
+        :param car_type_ids: Список ID типов кузова (опционально)
         :param from_radius: Радиус от точки отправления в км (опционально)
         :param to_radius: Радиус от точки назначения в км (опционально)
         :param any_direction: Искать без ограничения направления (опционально)
@@ -92,14 +96,14 @@ class AtiClient:
             payload["filter"]["to"] = to_filter
 
         # Фильтр по весу
-        if weight_from is not None or weight_to is not None:
+        if weight_min is not None or weight_max is not None:
             payload["filter"]["weight"] = {}
-            if weight_from is not None:
-                payload["filter"]["weight"]["min"] = weight_from
-            if weight_to is not None:
-                payload["filter"]["weight"]["max"] = weight_to
+            if weight_min is not None:
+                payload["filter"]["weight"]["min"] = weight_min
+            if weight_max is not None:
+                payload["filter"]["weight"]["max"] = weight_max
 
-        # Фильтр по объёму (ИСПРАВЛЕНО: были ошибки с weight_from/weight_to)
+        # Фильтр по объёму
         if volume_from is not None or volume_to is not None:
             payload["filter"]["volume"] = {}
             if volume_from is not None:
@@ -109,11 +113,17 @@ class AtiClient:
 
         # Фильтр по типу загрузки
         if car_load_type_ids:
-            if len(car_load_type_ids) == 1:
-                loading_type = str(car_load_type_ids[0])
-            else:
-                loading_type = str(sum(car_load_type_ids))
-            payload["filter"]["loading_type"] = loading_type
+            loading_type_mask = 0
+            for type_id in car_load_type_ids:
+                loading_type_mask |= type_id
+            payload["filter"]["loading_type"] = str(loading_type_mask)
+
+        # Фильтр по типу кузова
+        if car_type_ids:
+            car_type_mask = 0
+            for type_id in car_type_ids:
+                car_type_mask |= type_id
+            payload["filter"]["car_type"] = str(car_type_mask)
 
         response = requests.post(url, headers=headers, json=payload)
 
@@ -128,7 +138,9 @@ class AtiClient:
         url = f"{self.base_url}/v1.0/dictionaries/carTypes"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            with open("api_car_types.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
         return []
 
     @staticmethod
@@ -147,5 +159,17 @@ class AtiClient:
         url = f"https://api.ati.su/v1.0/dictionaries/loadingTypes"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            with open("api_loading_types.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        return []
+
+    @staticmethod
+    def currencyTypes():
+        url = f"https://api.ati.su/v1.0/dictionaries/currencyTypes"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            with open("api_currency_types.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
         return []

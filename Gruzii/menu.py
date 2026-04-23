@@ -1,12 +1,12 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from config import *
-from storage import get_car_loading_types
+from aiogram.types import (InlineKeyboardMarkup, InlineKeyboardButton,
+                           ReplyKeyboardMarkup, KeyboardButton)
+from Gruzii.config import loads_url
+from Gruzii.storage import get_car_loading_types, get_car_types
 
 
 def get_main_menu(has_subscription=False, subscription_time_remaining=None, is_admin=False):
     keyboard = []
 
-    # Админские кнопки
     if is_admin:
         keyboard.append([KeyboardButton(text="🛠 Админ-панель")])
         keyboard.append([KeyboardButton(text="🔍 Найти грузы")])
@@ -16,7 +16,6 @@ def get_main_menu(has_subscription=False, subscription_time_remaining=None, is_a
             input_field_placeholder="Выберите действие..."
         )
 
-    # Кнопка поиска грузов (только если есть активная подписка)
     if has_subscription:
         if subscription_time_remaining:
             keyboard.append([KeyboardButton(text=f"🔍 Найти грузы ({subscription_time_remaining})")])
@@ -32,16 +31,15 @@ def get_main_menu(has_subscription=False, subscription_time_remaining=None, is_a
     )
 
 
-def get_route_management_keyboard():
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="➕ Добавить ещё")],
-            [KeyboardButton(text="🗑 Удалить последнее")],
-            [KeyboardButton(text="Начать поиск")]
-        ],
-        resize_keyboard=True
-    )
-    return keyboard
+def admin_panel_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👥 Все пользователи", callback_data="admin_all_users")],
+        [InlineKeyboardButton(text="✅ Выдать подписку", callback_data="admin_give_subscription")],
+        [InlineKeyboardButton(text="❌ Забрать подписку", callback_data="admin_take_subscription")],
+        [InlineKeyboardButton(text="🗑 Удалить пользователя", callback_data="admin_delete_user")],
+        [InlineKeyboardButton(text="🔒 Отключить всем", callback_data="admin_disable_all")],
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")]
+    ])
 
 
 def get_type_keyboard():
@@ -84,19 +82,6 @@ def get_add_route_keyboard():
             InlineKeyboardButton(text="➕ Добавить ещё", callback_data="add_another_route"),
             InlineKeyboardButton(text="⚙️ Фильтр", callback_data="filter_search_start"),
             InlineKeyboardButton(text="🔍 Начать поиск", callback_data="confirm_search_start"),
-        ],
-        [
-            InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
-        ]
-    ])
-    return keyboard
-
-
-def get_confirmation_keyboard(action_data):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Да, начать поиск", callback_data=f"confirm_{action_data}"),
-            InlineKeyboardButton(text="⚙️ Фильтр", callback_data=f"filter_{action_data}"),
             InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
         ]
     ])
@@ -109,7 +94,8 @@ def get_filter_setup_keyboard():
         [
             InlineKeyboardButton(text="⚖️ Вес", callback_data="setup_weight"),
             InlineKeyboardButton(text="📦 Объем", callback_data="setup_volume"),
-            InlineKeyboardButton(text="🚚📦 Тип загрузки", callback_data="setup_car_load_type")
+            InlineKeyboardButton(text="🚚📦 Тип загрузки", callback_data="setup_car_load_type"),
+            InlineKeyboardButton(text="🚛 Тип кузова", callback_data="setup_car_type")
         ],
         [
             InlineKeyboardButton(text="✅ Завершить настройку", callback_data="finish_filters")
@@ -145,12 +131,11 @@ def get_volume_range_keyboard():
 
 
 def get_car_load_type_keyboard(selected_ids=None):
-    """Клавиатура для выбора типа загрузки из БД"""
+    """Клавиатура для выбора типа загрузки"""
     if selected_ids is None:
         selected_ids = []
 
     load_types = get_car_loading_types()
-
     keyboard = []
 
     for load_type in load_types:
@@ -160,7 +145,27 @@ def get_car_load_type_keyboard(selected_ids=None):
         callback_data = f"toggle_load_type_{load_type['Id']}"
         keyboard.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
 
-    keyboard.append([InlineKeyboardButton(text="🆗 Применить", callback_data="apply_load_type_selection")])
+    keyboard.append([InlineKeyboardButton(text="✅ Применить", callback_data="apply_load_type_selection")])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_car_type_keyboard(selected_ids=None):
+    """Клавиатура для выбора типа кузова"""
+    if selected_ids is None:
+        selected_ids = []
+
+    car_types_name = get_car_types()
+    keyboard = []
+
+    for load_type in car_types_name:
+        is_selected = load_type["Id"] in selected_ids
+        emoji = "✔️" if is_selected else "◻️"
+        text = f"{emoji} {load_type['Name']}"
+        callback_data = f"toggle_type_{load_type['Id']}"
+        keyboard.append([InlineKeyboardButton(text=text, callback_data=callback_data)])
+
+    keyboard.append([InlineKeyboardButton(text="✅ Применить", callback_data="apply_type_selection")])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -199,3 +204,17 @@ def get_to_type_keyboard():
         input_field_placeholder="Выберите тип или любое направление..."
     )
     return keyboard
+
+
+def disabling_subscriptions_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ Да, отключить всем", callback_data="confirm_disable_all")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
+    ])
+
+
+def remove_user_keyboard(target_user_id):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⚠️ Да, удалить", callback_data=f"confirm_delete_{target_user_id}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
+    ])

@@ -7,7 +7,6 @@ class SearchStates(StatesGroup):
     setting_to_type = State()
     setting_to_location = State()
     adding_route = State()
-    confirming_search = State()
     searching = State()
     setting_from_radius = State()
     setting_from_radius_custom = State()
@@ -39,6 +38,10 @@ class VolumeStates(StatesGroup):
 class CarLoadTypeStates(StatesGroup):
     setting_car_load_type = State()
     selecting_car_load_type = State()
+
+
+class CarTypeStates(StatesGroup):
+    setting_car_type = State()
 
 
 class AdminStates(StatesGroup):

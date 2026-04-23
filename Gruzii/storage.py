@@ -1,23 +1,30 @@
-import json
-from pathlib import Path
-from datetime import datetime
-from config import *
-import sqlite3
-from datetime import datetime, timedelta
+import asyncio
 import os
 import logging
+import json
+import sqlite3
 
+from datetime import datetime, timedelta
+
+from typing import Dict
+from Gruzii.config import geo_types
+from Gruzii.config import DB_NAME, processed_file, api_car_types, api_loading_types
 logging.basicConfig(level=logging.INFO)
 
-carTypes_file = Path("car_types.json")
-processed_file = Path("processed.json")
-DB_NAME = Path("database.db")
+
+tasks: Dict[int, asyncio.Task] = {}
+active_searches: Dict[int, bool] = {}
+
+_car_loading_types_cache = None
+_car_types_cache = None
 
 
 def init_db():
     """Инициализация базы данных и создание таблиц"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
+
+    # Таблица подписок
     cursor.execute('''
             CREATE TABLE IF NOT EXISTS Subscriptions (
                 user_id INTEGER PRIMARY KEY,
@@ -28,27 +35,39 @@ def init_db():
                 trial_used BOOLEAN DEFAULT 0
             )
         ''')
+
+    # Таблица типов транспорта
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS CarTypes (
+            Id INTEGER PRIMARY KEY,
+            Name TEXT NOT NULL
+        )
+    ''')
+
+    # Таблица типов загрузки
+    cursor.execute('''
+                CREATE TABLE IF NOT EXISTS CarLoadingTypes (
+                    Id INTEGER PRIMARY KEY,
+                    Name TEXT NOT NULL
+                )
+            ''')
+
     conn.commit()
     conn.close()
 
 
 def load_users() -> list[int]:
-    """Загружает список пользователей из таблицы User"""
-    if not Path(DB_NAME).exists():
-        init_db()
-
+    """Загружает список пользователей из таблицы Subscriptions"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT user_id FROM Subscriptions ORDER BY user_id")
     users = [row[0] for row in cursor.fetchall()]
+    conn.close()
     return users
 
 
 def save_user(user_id: int):
-    """Добавляет пользователя в таблицу User"""
-    if not Path(DB_NAME).exists():
-        init_db()
-
+    """Добавляет пользователя в таблицу Subscriptions"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT user_id FROM Subscriptions WHERE user_id = ?", (user_id,))
@@ -125,40 +144,90 @@ def delete_processed():
         os.remove(processed_file)
 
 
-def load_car_types():
-    if not Path(DB_NAME).exists():
-        init_db()
-
+def added_car_types():
+    """Загружает типы транспорта из JSON файла в БД"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT Id, Name FROM CarTypes")
-    data = []
-    for row in cursor.fetchall():
-        data.append({
-            "Id": row[0],
-            "Name": row[1]
-        })
 
+    cursor.execute("SELECT COUNT(*) FROM CarTypes")
+    count = cursor.fetchone()[0]
+
+    if count > 0:
+        conn.close()
+        return
+
+    with open(api_car_types, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    items = data if isinstance(data, list) else data.get('data', [])
+
+    for item in items:
+        id = item.get('Id')
+        name = item.get('Name')
+
+        if id and name:
+            cursor.execute("INSERT INTO CarTypes (Id, Name) VALUES (?, ?)", (id, name))
+
+    conn.commit()
     conn.close()
-    return data
 
 
-def get_car_loading_types():
-    if not Path(DB_NAME).exists():
-        init_db()
-
+def added_loading_types():
+    """Загружает типы загрузки из JSON файла в БД"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("SELECT Id, Name FROM CarLoadingTypes")
-    data = []
-    for row in cursor.fetchall():
-        data.append({
-            "Id": row[0],
-            "Name": row[1]
-        })
 
+    cursor.execute("SELECT COUNT(*) FROM CarLoadingTypes")
+    count = cursor.fetchone()[0]
+
+    if count > 0:
+        conn.close()
+        return
+
+    with open(api_loading_types, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    items = data if isinstance(data, list) else data.get('data', [])
+
+    for item in items:
+        id = item.get('Id')
+        name = item.get('Name')
+
+        if id and name:
+            cursor.execute("INSERT INTO CarLoadingTypes (Id, Name) VALUES (?, ?)", (id, name))
+
+    conn.commit()
     conn.close()
-    return data
+
+
+def get_car_loading_types(force_refresh=False):
+    """Загружает типы загрузки из БД с кэшированием"""
+    global _car_loading_types_cache
+    if force_refresh or _car_loading_types_cache is None:
+        if not DB_NAME.exists():
+            init_db()
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT Id, Name FROM CarLoadingTypes")
+        _car_loading_types_cache = [{"Id": row[0], "Name": row[1]} for row in cursor.fetchall()]
+        conn.close()
+        logging.info(f"Загружено {len(_car_loading_types_cache)} типов загрузки (кэш)")
+    return _car_loading_types_cache
+
+
+def get_car_types(force_refresh=False):
+    """Загружает типы кузова из БД с кэшированием"""
+    global _car_types_cache
+    if force_refresh or _car_types_cache is None:
+        if not DB_NAME.exists():
+            init_db()
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT Id, Name FROM CarTypes")
+        _car_types_cache = [{"Id": row[0], "Name": row[1]} for row in cursor.fetchall()]
+        logging.info(f"Загружено {len(_car_types_cache)} типов кузова (кэш)")
+        conn.close()
+    return _car_types_cache
 
 
 def save_data_cargo(data):
@@ -169,10 +238,9 @@ def save_data_cargo(data):
 def get_car_types_name(ids):
     """
     Получает названия типов транспорта по их ID.
-
-    :param ids: может быть строкой с ID через запятую (например "1,2,3") или списком ID (например [1,2,3])
-    :return: строка с названиями через запятую
     """
+    added_car_types()
+
     # Если ids - это список
     if isinstance(ids, list):
         id_list = [str(x) for x in ids]
@@ -188,19 +256,11 @@ def get_car_types_name(ids):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Создаём таблицу если её нет
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS car_types (
-            id INTEGER PRIMARY KEY,
-            name TEXT
-        )
-    ''')
-
     names = []
     for id_str in id_list:
         try:
             id_int = int(id_str)
-            cursor.execute('SELECT name FROM car_types WHERE id = ?', (id_int,))
+            cursor.execute('SELECT Name FROM CarTypes WHERE Id = ?', (id_int,))
             result = cursor.fetchone()
             if result:
                 names.append(result[0])
@@ -226,9 +286,7 @@ def get_type_id(geo_type_name):
 
 
 def get_car_loading_type_name_by_id(car_loading_type_id):
-    if not Path(DB_NAME).exists():
-        init_db()
-
+    added_loading_types()
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT Name FROM CarLoadingTypes WHERE Id = ?", (car_loading_type_id,))

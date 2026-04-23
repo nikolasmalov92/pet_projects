@@ -1,16 +1,16 @@
 import asyncio
 import logging
-from ati_client import AtiClient
-from parser_cargo import parsing_data
-from menu import menu_details, get_search_controls
+from Gruzii.ati_client import AtiClient
+from Gruzii.parser_cargo import parsing_data
+from Gruzii.menu import menu_details, get_search_controls
 
 logging.basicConfig(level=logging.INFO)
 
 
 async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
-                                weight_from, weight_to, message,
+                                weight_min, weight_max, message,
                                 volume_from, volume_to,
-                                active_searches, car_load_type_ids,
+                                active_searches, car_load_type_ids, car_type_ids,
                                 from_radius=None, to_radius=None,
                                 any_direction=False):
     """
@@ -25,8 +25,8 @@ async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
     :param from_type: Тип географической точки отправления
     :param to_name: Название пункта назначения (None при any_direction=True)
     :param to_type: Тип географической точки назначения (None при any_direction=True)
-    :param weight_from: Минимальный вес груза
-    :param weight_to: Максимальный вес груза
+    :param weight_min: Минимальный вес груза
+    :param weight_max: Максимальный вес груза
     :param message: Сообщение для отправки результатов
     :param from_radius: Радиус поиска от пункта отправления, км (опционально)
     :param to_radius: Радиус поиска у пункта назначения, км (опционально)
@@ -51,14 +51,14 @@ async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
                 cargo_data = ati_client.get_cargo(
                     from_id, from_type,
                     to_id, to_type,
-                    weight_from, weight_to,
+                    weight_min, weight_max,
                     volume_from, volume_to,
                     car_load_type_ids,
+                    car_type_ids,
                     from_radius=from_radius,
                     to_radius=to_radius,
                     any_direction=any_direction,
                 )
-
                 loads = []
                 if isinstance(cargo_data, dict):
                     temp_loads = cargo_data.get('loads')
@@ -90,7 +90,7 @@ async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
                             reply_markup=keyboard,
                             parse_mode="HTML",
                         )
-                        await asyncio.sleep(0.5)  # Небольшая задержка между сообщениями
+                        await asyncio.sleep(0.5)
                 else:
                     if search_count % 3 == 0:
                         await message.answer(
