@@ -1,7 +1,13 @@
 import requests
-from dotenv import load_dotenv
+import logging
 import os
+
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
+
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 
@@ -52,7 +58,7 @@ class AviaSearch:
         response = requests.get(url)
         if response.status_code == self.success_code:
             return response.json()
-        print(f"Соединение с сервером не установлено: {response.status_code}")
+        logger.error(f"Соединение с сервером не установлено: {response.status_code}")
         return None
 
     def get_tickets_near_dates(self, data_there, data_back, start_date, end_date, days_range=3):
