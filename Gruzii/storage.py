@@ -211,7 +211,6 @@ def get_car_loading_types(force_refresh=False):
         cursor.execute("SELECT Id, Name FROM CarLoadingTypes")
         _car_loading_types_cache = [{"Id": row[0], "Name": row[1]} for row in cursor.fetchall()]
         conn.close()
-        logging.info(f"Загружено {len(_car_loading_types_cache)} типов загрузки (кэш)")
     return _car_loading_types_cache
 
 
@@ -225,7 +224,6 @@ def get_car_types(force_refresh=False):
         cursor = conn.cursor()
         cursor.execute("SELECT Id, Name FROM CarTypes")
         _car_types_cache = [{"Id": row[0], "Name": row[1]} for row in cursor.fetchall()]
-        logging.info(f"Загружено {len(_car_types_cache)} типов кузова (кэш)")
         conn.close()
     return _car_types_cache
 

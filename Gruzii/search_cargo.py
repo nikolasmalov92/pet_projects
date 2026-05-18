@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from Gruzii.ati_client import AtiClient
 from Gruzii.parser_cargo import parsing_data
 from Gruzii.menu import menu_details, get_search_controls
@@ -91,12 +92,6 @@ async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
                             parse_mode="HTML",
                         )
                         await asyncio.sleep(0.5)
-                else:
-                    if search_count % 3 == 0:
-                        await message.answer(
-                            f"🔍 Поиск продолжается...\nНайдено грузов за сессию: {found_count}",
-                            reply_markup=get_search_controls()
-                        )
             else:
                 logging.warning(
                     f"Не удалось определить гео-точки: {from_name} ({from_type}) → "
@@ -111,7 +106,6 @@ async def search_cargo_for_user(user_id, from_name, from_type, to_name, to_type,
                 break
         except Exception as e:
             logging.error(f"Ошибка поиска: {e}")
-            import traceback
             logging.error(traceback.format_exc())
             await message.answer(
                 "⚠️ <b>Временная ошибка поиска</b>\n\n"

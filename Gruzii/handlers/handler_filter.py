@@ -10,7 +10,6 @@ from Gruzii.menu import (get_filter_setup_keyboard, get_car_load_type_keyboard,
                          get_weight_range_keyboard, get_volume_range_keyboard,
                          get_add_route_keyboard, get_car_type_keyboard, get_car_types)
 from Gruzii.storage import get_car_loading_types
-
 router = Router()
 
 
@@ -21,8 +20,27 @@ async def handle_filter_button(callback: CallbackQuery, state: FSMContext):
 
 
 async def start_filter_setup(callback: CallbackQuery, state: FSMContext):
-    """Начинает настройку фильтров после нажатия кнопки '⚙️ Фильтр'"""
+    """Начинает настройку фильтров"""
     await callback.answer()
+
+    data = await state.get_data()
+    route_index = data.get('filter_route_index')
+
+    if route_index is not None:
+        routes = data.get('routes', [])
+        if route_index < len(routes):
+            route = routes[route_index]
+            await callback.message.edit_text(
+                f"⚙️ <b>Настройка фильтров для маршрута:</b>\n"
+                f"📍 {route['from_location']} → {route.get('to_location', 'любое')}\n\n"
+                f"Выберите параметры:",
+                parse_mode="HTML",
+                reply_markup=get_filter_setup_keyboard()
+            )
+            await state.update_data(filtering_route_index=route_index)
+            await state.set_state(FilterStates.setting_filters)
+            return
+
     await state.set_state(FilterStates.setting_filters)
     await callback.message.edit_text(
         "⚙️ <b>Настройка фильтров</b>\n\n"
@@ -30,7 +48,6 @@ async def start_filter_setup(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML",
         reply_markup=get_filter_setup_keyboard()
     )
-    await callback.answer()
 
 
 async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
@@ -76,9 +93,53 @@ async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
         )
 
     elif callback.data == "finish_filters":
-        await show_search_confirmation(callback.message, state)
+        data = await state.get_data()
+        route_index = data.get('filtering_route_index')
 
-    await callback.answer()
+        if route_index is not None:
+            # Сохраняем фильтры в маршрут
+            routes = data.get('routes', [])
+            if route_index < len(routes):
+                routes[route_index]['filters'] = {
+                    'weight_min': data.get('weight_min'),
+                    'weight_max': data.get('weight_max'),
+                    'volume_from': data.get('volume_from'),
+                    'volume_to': data.get('volume_to'),
+                    'car_load_type_ids': data.get('car_load_type_ids', []),
+                    'car_type_ids': data.get('car_type_ids', []),
+                }
+                await state.update_data(routes=routes)
+
+            # Очищаем временные данные
+            await state.update_data(
+                filtering_route_index=None,
+                filter_route_index=None,
+                weight_min=None,  # добавить
+                weight_max=None,  # добавить
+                volume_from=None,  # добавить
+                volume_to=None,  # добавить
+                car_load_type_ids=[],  # добавить
+                car_type_ids=[]  # добавить
+            )
+
+            # Показываем список маршрутов
+            routes_list = routes if route_index < len(routes) else data.get('routes', [])
+            routes_text = "\n".join(
+                f"  {i + 1}. {r['from_location']} → {r.get('to_location') or '🌐 Любое'}"
+                for i, r in enumerate(routes_list)
+            )
+
+            await callback.message.edit_text(
+                f"✅ Маршруты добавлены!\n\n"
+                f"📋 <b>Текущие маршруты:</b>\n{routes_text}\n\n"
+                "Выберите действие:",
+                parse_mode="HTML",
+                reply_markup=get_add_route_keyboard()
+            )
+        else:
+            await show_search_confirmation(callback.message, state)
+
+        await callback.answer()
 
 
 @router.callback_query(StateFilter(FilterStates.setting_filters))

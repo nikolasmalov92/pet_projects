@@ -32,7 +32,7 @@ async def subscribe_user(message: Message):
 
     try:
         # Активируем подписку
-        subscription = subscription_manager.activate_subscription(user_id)
+        subscription = subscription_manager.activate_trial_subscription(user_id)
         end_time = subscription["end_time"].strftime("%d.%m.%Y %H:%M")
         is_admin = (user_id == ADMIN_USER_ID)
 
@@ -89,11 +89,20 @@ async def check_subscription(message: Message):
         else:
             status = "❌ Истекла"
             await message.answer(
-                f"📋 <b>Информация о подписке</b>\n\n"
-                f"Тип: <b>{type_label}</b>\n"
-                f"Статус: <b>{status}</b>\n"
-                f"Начало: <b>{start_time}</b>\n"
-                f"Окончание: <b>{end_time}</b>\n\n"
-                "Нажмите 'Подписаться', чтобы активировать новую подписку.",
+                "⏰ <b>Ваш бесплатный период завершён</b>\n\n"
+                "Спасибо, что протестировали ГрузИИ! За 24 часа вы успели увидеть, как работает автоматический "
+                "мониторинг грузов.\n\n"
+                "Чтобы продолжить получать заявки <b>первым</b> и перехватывать лучшие грузы, выберите подходящий "
+                "тариф:\n\n"
+                "💼 <b>Тарифы</b>\n"
+                "📅 1 месяц — <b>5 000₽</b>\n"
+                "📅 3 месяца — <b>13 990₽</b> (4 663₽/мес)\n"
+                "💰 Экономия 5%\n"
+                "📅 6 месяцев — <b>24 990₽</b> (4 166₽/мес)\n"
+                "💰 Экономия 15%\n"
+                "📅 12 месяцев — <b>42 000₽</b> (3 500₽/мес)\n"
+                "💰 Экономия 30%\n\n"
+                "📲 <b>Для подключения напишите:</b> @vakhtang_p\n\n"
+                "🚛 Продолжайте перехватывать лучшие грузы первыми!",
                 parse_mode="HTML"
             )

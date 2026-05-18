@@ -18,6 +18,21 @@ logging.basicConfig(level=logging.INFO)
 
 router = Router()
 
+message_start = """
+🚚 <b>Добро пожаловать, {first_name}!</b>
+
+🎁 <b>24 часа полного доступа в подарок</b>
+
+<b><u>Что вы получаете:</u></b>
+⚡ Автомониторинг <b>каждые 3 минуты</b>
+🔔 Мгновенные уведомления о новых грузах
+🎯 Вы всегда видите заявки <b>первыми</b>
+
+🚀 <b>Готовы перехватывать лучшие грузы?</b>
+
+<b>Нажмите «Подписаться», чтобы активировать доступ</b>
+"""
+
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
@@ -52,10 +67,7 @@ async def cmd_start(message: Message, state: FSMContext):
             )
         else:
             await message.answer(
-                f"🚚 <b>Добро пожаловать, {first_name}!</b>\n\n"
-                "📋 <b>Для работы с ботом необходима подписка</b>\n\n"
-                "⏰ Подписка даёт доступ на 24 часа.\n"
-                "Нажмите 'Подписаться', чтобы активировать доступ.",
+                message_start.format(first_name=first_name),
                 parse_mode="HTML",
                 reply_markup=get_main_menu(has_subscription=False, is_admin=is_admin)
             )
@@ -170,4 +182,38 @@ async def inline_stop_search(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_main_menu(has_subscription=has_subscription,
                                    subscription_time_remaining=time_remaining,
                                    is_admin=is_admin)
+    )
+
+
+@router.message(Command("help"))
+async def help_command(message: Message):
+    await message.answer(
+        "📘 <b>Инструкция по использованию бота</b>\n\n"
+        "🎥 Видео-инструкция:\n"
+        "https://disk.yandex.ru/i/Uvju7uyCycpXJQ\n\n"
+        "Если останутся вопросы — пишите @vakhtang_p",
+        parse_mode="HTML"
+    )
+
+
+@router.message(Command("tariffs"))
+async def tariffs_command(message: Message):
+    await message.answer(
+        "💼 <b>Тарифы</b>\n\n"
+        "📅 1 месяц — <b>5 000₽</b>\n"
+        "📅 3 месяца — <b>13 990₽</b> (4 663₽/мес) — 💰 экономия 5%\n"
+        "📅 6 месяцев — <b>24 990₽</b> (4 166₽/мес) — 💰 экономия 15%\n"
+        "📅 12 месяцев — <b>42 000₽</b> (3 500₽/мес) — 💰 экономия 30%\n\n"
+        "📲 <b>Для подключения напишите:</b> @vakhtang_p",
+        parse_mode="HTML"
+    )
+
+
+@router.message(Command("contacts"))
+async def contacts_command(message: Message):
+    await message.answer(
+        "📞 <b>Контакты администратора</b>\n\n"
+        "Если вам нужна помощь, подключение подписки или есть вопросы по работе бота — пишите:\n\n"
+        "💬 <b>@vakhtang_p</b>",
+        parse_mode="HTML"
     )

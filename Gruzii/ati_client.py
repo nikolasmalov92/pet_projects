@@ -76,7 +76,6 @@ class AtiClient:
             if to_radius and to_radius > 0:
                 to_filter["toRadius"] = to_radius
 
-        # Базовый payload
         payload = {
             "exclude_geo_dicts": True,
             "page": 1,
@@ -85,9 +84,9 @@ class AtiClient:
                 "from": from_filter,
                 "dates": {"date_option": "today-plus"},
                 "exclude_tenders": False,
-                "change_date": 3,
                 "extra_params": 0,
-                "sorting_type": 2  # сортировка: 'добавлен сегодня'
+                "change_date": "today",
+                "sorting_type": 2,  # сортировка: 'добавлен сегодня'
             }
         }
 
@@ -123,7 +122,7 @@ class AtiClient:
             car_type_mask = 0
             for type_id in car_type_ids:
                 car_type_mask |= type_id
-            payload["filter"]["car_type"] = str(car_type_mask)
+            payload["filter"]["truck_type"] = str(car_type_mask)
 
         response = requests.post(url, headers=headers, json=payload)
 

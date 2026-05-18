@@ -58,19 +58,20 @@ def parsing_data(data, user_id):
 
         no_nds = rate_no_nds if rate_no_nds else 'Нет данных'
         nds = rate_nds if rate_nds else 'Нет данных'
-
+        sizes = get_sizes(load) or ''
         msg = (
-            f"🆕 Новый груз #{load_num} \n"
-            f"Дата: {dateAdd} \n"
-            f"Направление: {direction} \n"
-            f"Транспорт: {transport} \n"
-            f"Тип загрузки: {loading_types} \n"
-            f"Вес/Объём/Груз: {weight_volume} \n"
-            f"Расстояние: {route} \n"
-            f"Ставка: {no_nds} | {nds} \n"
-            f"Ставка за км: {km_nds} руб. | {km_no_nds} руб. \n"
-            f"{'Примечание: ' + note if note else ''}\n"
-            f"{'Компания: ' + firm if firm else ''}"
+            f"🆕 <b>Новый груз #{load_num}</b>\n"
+            f"<b>Дата:</b> {dateAdd}\n"
+            f"<b>Направление:</b> {direction}\n"
+            f"<b>Транспорт:</b> {transport}\n"
+            f"<b>Тип загрузки:</b> {loading_types if loading_types else ''}\n"
+            f"<b>Вес/Объём/Груз:</b> {weight_volume}\n"
+            f"<b>Габариты (ДxШxВ,м):</b> {sizes}\n"
+            f"<b>Расстояние:</b> {route}\n"
+            f"<b>Ставка:</b> {nds if nds else ''} | {no_nds if no_nds else ''}\n"
+            f"<b>Ставка за км:</b> {km_nds if km_nds else ''} руб. | {km_no_nds if km_no_nds else ''} руб.\n"
+            f"{'<b>Примечание:</b> ' + note if note else ''}\n"
+            f"{'<b>Компания:</b> ' + firm if firm else ''}"
         )
         items.append((load_id, msg))
         processed_list.append(load_num)
@@ -110,17 +111,38 @@ def format_transport(load):
 
 def format_weight_volume(load):
     """Форматирует информацию о весе и объёме"""
+    data = []
     load_info = load.get('load', {})
     weight = load_info.get('weight', '')
     volume = load_info.get('volume', '')
     cargo_type = load_info.get('cargoType', '')
+    palletCount = load_info.get('palletCount', '')
+    dogruz = load_info.get('dogruz', '')
+    dogruzPossible = load_info.get('dogruzPossible', '')
+    onlyToSeparateCar = load_info.get('onlyToSeparateCar', '')
+    sborGruz = load_info.get('sborGruz', '')
 
-    if not weight:
-        weight = load.get('weight', '')
-    if not volume:
-        volume = load.get('volume', '')
+    if weight:
+        data.append(f"{weight} т")
+    if volume:
+        data.append(f"{volume} м³")
+    if cargo_type:
+        data.append(cargo_type)
+    if palletCount:
+        data.append(f"{palletCount} пал")
+    if dogruz:
+        data.append("догруз")
+    if dogruzPossible:
+        data.append("догруз возможен")
+    if onlyToSeparateCar:
+        data.append("только отдельная машина")
+    if sborGruz:
+        data.append("сборный груз")
 
-    return f"{weight} т | {volume} м³ | {cargo_type}"
+    if not data:
+        return ''
+
+    return " | ".join(data)
 
 
 def format_route(load):
@@ -130,7 +152,7 @@ def format_route(load):
     travel_time = route.get('travelTime', '')
 
     if distance or travel_time:
-        return f"{distance} км, {travel_time}"
+        return f"{distance} км"
     return "Не указан"
 
 
@@ -178,6 +200,10 @@ def get_firm(load):
 
 def get_date_add(load):
     """Получает дату добавления груза"""
+    change_date = load.get('changeDate', '')
+    if change_date:
+        return formatted_date(change_date)
+
     add_date = load.get('addDate', '')
     return formatted_date(add_date)
 
@@ -241,3 +267,26 @@ def extract_number(value) -> float:
     if match:
         return float(match.group().replace(',', '.'))
     return 0
+
+
+def get_sizes(load):
+    """Форматирует габариты """
+    loading = load.get('loading', {})
+    loading_cargos = loading.get('loadingCargos', [])
+    if loading_cargos and len(loading_cargos) > 0:
+        first_load = loading_cargos[0]
+        sizes = first_load.get('sizes', {})
+    else:
+        return
+
+    length = sizes.get('length', '')
+    width = sizes.get('width', '')
+    height = sizes.get('height', '')
+    diameter = sizes.get('diameter', '')
+
+    if length or width or height:
+        len_str = f"{float(length):.2f}" if length else ''
+        width_str = f"{float(width):.2f}" if width else ''
+        height_str = f"{float(height):.2f}" if height else ''
+
+        return f"{len_str}×{width_str}×{height_str}"

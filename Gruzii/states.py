@@ -12,6 +12,7 @@ class SearchStates(StatesGroup):
     setting_from_radius_custom = State()
     setting_to_radius = State()
     setting_to_radius_custom = State()
+    setting_route_filters = State()
 
 
 class MultiRouteStates(StatesGroup):

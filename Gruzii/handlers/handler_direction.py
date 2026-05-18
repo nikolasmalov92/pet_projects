@@ -5,7 +5,7 @@ from aiogram import F
 from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from Gruzii.config import ADMIN_USER_ID
 from Gruzii.menu import (get_main_menu, get_type_keyboard, get_radius_keyboard,
@@ -15,6 +15,7 @@ from Gruzii.storage import get_type_id
 from Gruzii.subscription import subscription_manager
 from Gruzii.search_cargo import search_cargo_for_user
 from Gruzii.storage import tasks, active_searches
+from Gruzii.handlers.handler_filter import start_filter_setup
 
 router = Router()
 
@@ -108,8 +109,27 @@ async def add_route_and_show(message, state: FSMContext, is_any_direction: bool 
     data = await state.get_data()
     routes = data.get('routes', [])
 
+    if 'from_location' not in data or 'from_type' not in data:
+        await message.answer("❌ Ошибка: не хватает данных о маршруте. Начните заново.")
+        await go_to_main_menu(message, state)
+        return
+
+    if not is_any_direction and ('to_location' not in data or 'to_type' not in data):
+        await message.answer("❌ Ошибка: не указан пункт назначения.")
+        await go_to_main_menu(message, state)
+        return
+
     route = create_route_from_state(data, is_any_direction)
     routes.append(route)
+    await state.update_data(
+        routes=routes,
+        from_location=None,
+        from_type=None,
+        from_radius=None,
+        to_location=None,
+        to_type=None,
+        to_radius=None,
+    )
     await state.update_data(routes=routes)
 
     routes_text = "\n".join(
@@ -141,7 +161,11 @@ async def ask_to_type(message, state: FSMContext):
 
 async def finish_route(message, state: FSMContext):
     """Завершает добавление маршрута (не любое направление)"""
-    await add_route_and_show(message, state, is_any_direction=False)
+    data = await state.get_data()
+    if 'to_location' not in data or 'to_type' not in data:
+        await ask_to_type(message, state)
+    else:
+        await add_route_and_show(message, state, is_any_direction=False)
 
 
 @router.message(F.text.startswith("🔍 Найти грузы"))
@@ -179,7 +203,7 @@ async def set_from_type(message: Message, state: FSMContext):
         emoji_map = {"Город": "🏙️", "Регион": "🌍", "Страна": "🗺️"}
         await message.answer(
             f"✅ Выбрано: <b>{emoji_map.get(text, '')} {text}</b>\n\n"
-            f"📍 Введите название пункта отправления ({text.lower()}):",
+            f"📍 Введите название пункта отправления:",
             parse_mode="HTML"
         )
     elif text == "🔙 Назад":
@@ -215,7 +239,7 @@ async def handle_from_radius(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(SearchStates.setting_from_radius_custom))
 async def handle_from_radius_custom(message: Message, state: FSMContext):
-    await handle_radius_custom_input(message, state, "from", finish_route)
+    await handle_radius_custom_input(message, state, "from", ask_to_type)
 
 
 @router.message(StateFilter(SearchStates.setting_to_location))
@@ -269,7 +293,7 @@ async def set_to_type(message: Message, state: FSMContext):
         emoji_map = {"Город": "🏙️", "Регион": "🌍", "Страна": "🗺️"}
         await message.answer(
             f"✅ Выбрано: <b>{emoji_map.get(text, '')} {text}</b>\n\n"
-            f"🏁 Введите название пункта назначения ({text.lower()}):",
+            f"🏁 Введите название пункта назначения:",
             parse_mode="HTML"
         )
     elif text == "🔙 Назад":
@@ -362,3 +386,59 @@ async def confirm_search_from_add_route(callback: CallbackQuery, state: FSMConte
             to_radius=route.get('to_radius'),
             any_direction=route.get('any_direction', False), ))
         tasks[user_id] = task
+
+
+# Обработчик кнопки "Фильтр" - показываем список маршрутов
+@router.callback_query(F.data == "show_filters_menu", StateFilter(SearchStates.adding_route))
+async def show_filters_menu(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    routes = data.get('routes', [])
+
+    if not routes:
+        await callback.answer("Нет маршрутов")
+        return
+
+    buttons = []
+    for i, route in enumerate(routes):
+        to_text = route.get('to_location') or '🌐 Любое'
+        buttons.append([InlineKeyboardButton(
+            text=f"{i + 1}. {route['from_location']} → {to_text}",
+            callback_data=f"filter_route_{i}"
+        )])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_routes")])
+
+    await callback.message.edit_text(
+        "🔍 <b>Выберите маршрут для настройки фильтра:</b>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await callback.answer()
+
+
+# Выбор маршрута - сохраняем индекс и открываем фильтры
+@router.callback_query(F.data.startswith("filter_route_"), StateFilter(SearchStates.adding_route))
+async def select_route_for_filter(callback: CallbackQuery, state: FSMContext):
+    route_index = int(callback.data.split("_")[2])
+    await state.update_data(filter_route_index=route_index)
+
+    await start_filter_setup(callback, state)
+
+
+# Возврат к списку маршрутов
+@router.callback_query(F.data == "back_to_routes", StateFilter(SearchStates.adding_route))
+async def back_to_routes(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    routes = data.get('routes', [])
+    routes_text = "\n".join(
+        f"  {i + 1}. {r['from_location']} → {r.get('to_location') or '🌐 Любое'}"
+        for i, r in enumerate(routes)
+    )
+
+    await callback.message.edit_text(
+        f"✅ Маршруты добавлены!\n\n"
+        f"📋 <b>Текущие маршруты:</b>\n{routes_text}\n\n"
+        "Выберите действие:",
+        parse_mode="HTML",
+        reply_markup=get_add_route_keyboard()
+    )
+    await callback.answer()

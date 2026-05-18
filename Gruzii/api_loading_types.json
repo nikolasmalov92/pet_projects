@@ -1,0 +1,138 @@
+[
+  {
+    "NameEng": "top",
+    "ShortName": "верх.",
+    "ShortNameEng": "top",
+    "Id": 1,
+    "Id2": "13478a08-9812-e411-8e11-00259038ec34",
+    "Name": "верхняя"
+  },
+  {
+    "NameEng": "side",
+    "ShortName": "бок.",
+    "ShortNameEng": "side",
+    "Id": 2,
+    "Id2": "14478a08-9812-e411-8e11-00259038ec34",
+    "Name": "боковая"
+  },
+  {
+    "NameEng": "rear",
+    "ShortName": "задн.",
+    "ShortNameEng": "rear",
+    "Id": 4,
+    "Id2": "15478a08-9812-e411-8e11-00259038ec34",
+    "Name": "задняя"
+  },
+  {
+    "NameEng": "full",
+    "ShortName": "с полн.раст.",
+    "ShortNameEng": "full",
+    "Id": 8,
+    "Id2": "16478a08-9812-e411-8e11-00259038ec34",
+    "Name": "с полной растентовкой"
+  },
+  {
+    "NameEng": "with sliding roof",
+    "ShortName": "сн.поп.перекл.",
+    "ShortNameEng": "with slid.roof",
+    "Id": 32,
+    "Id2": "18478a08-9812-e411-8e11-00259038ec34",
+    "Name": "со снятием поперечных перекладин"
+  },
+  {
+    "NameEng": "with removable pillars",
+    "ShortName": "сн.стоек",
+    "ShortNameEng": "with remov.pillars",
+    "Id": 64,
+    "Id2": "19478a08-9812-e411-8e11-00259038ec34",
+    "Name": "со снятием стоек"
+  },
+  {
+    "NameEng": "without gates",
+    "ShortName": "б.ворот",
+    "ShortNameEng": "without gates",
+    "Id": 128,
+    "Id2": "1a478a08-9812-e411-8e11-00259038ec34",
+    "Name": "без ворот"
+  },
+  {
+    "NameEng": "hydroboard",
+    "ShortName": "гидр.б.",
+    "ShortNameEng": "hydroboard",
+    "Id": 256,
+    "Id2": "1b478a08-9812-e411-8e11-00259038ec34",
+    "Name": "гидроборт"
+  },
+  {
+    "NameEng": "apparels",
+    "ShortName": "апп.",
+    "ShortNameEng": "app.",
+    "Id": 512,
+    "Id2": "1c478a08-9812-e411-8e11-00259038ec34",
+    "Name": "аппарели"
+  },
+  {
+    "NameEng": "with crate",
+    "ShortName": "реш.",
+    "ShortNameEng": "crat.",
+    "Id": 1024,
+    "Id2": "1d478a08-9812-e411-8e11-00259038ec34",
+    "Name": "с обрешеткой"
+  },
+  {
+    "NameEng": "with boards",
+    "ShortName": "борт.",
+    "ShortNameEng": "brd.",
+    "Id": 2048,
+    "Id2": "1e478a08-9812-e411-8e11-00259038ec34",
+    "Name": "с бортами"
+  },
+  {
+    "NameEng": "side by side",
+    "ShortName": "2-бок",
+    "ShortNameEng": "2-side",
+    "Id": 4096,
+    "Id2": "1f478a08-9812-e411-8e11-00259038ec34",
+    "Name": "боковая с 2-х сторон"
+  },
+  {
+    "NameEng": "pour",
+    "ShortName": "налив.",
+    "ShortNameEng": "pour.",
+    "Id": 8192,
+    "Id2": "ee902254-4047-ee11-bbc4-0cc47af31075",
+    "Name": "налив"
+  },
+  {
+    "NameEng": "electric",
+    "ShortName": "электр.",
+    "ShortNameEng": "electric.",
+    "Id": 16384,
+    "Id2": "ef902254-4047-ee11-bbc4-0cc47af31075",
+    "Name": "электрический"
+  },
+  {
+    "NameEng": "hydraulic",
+    "ShortName": "гидравл.",
+    "ShortNameEng": "hydraulic.",
+    "Id": 32768,
+    "Id2": "f0902254-4047-ee11-bbc4-0cc47af31075",
+    "Name": "гидравлический"
+  },
+  {
+    "NameEng": "pneumatic",
+    "ShortName": "пневм.",
+    "ShortNameEng": "pneumatic.",
+    "Id": 131072,
+    "Id2": "f1902254-4047-ee11-bbc4-0cc47af31075",
+    "Name": "пневматический"
+  },
+  {
+    "NameEng": "diesel compressor",
+    "ShortName": "диз.компр.",
+    "ShortNameEng": "diesel compr.",
+    "Id": 262144,
+    "Id2": "f6902254-4047-ee11-bbc4-0cc47af31075",
+    "Name": "дизельный компрессор"
+  }
+]

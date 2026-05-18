@@ -80,7 +80,7 @@ def get_add_route_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="➕ Добавить ещё", callback_data="add_another_route"),
-            InlineKeyboardButton(text="⚙️ Фильтр", callback_data="filter_search_start"),
+            InlineKeyboardButton(text="⚙️ Фильтр", callback_data="show_filters_menu"),
             InlineKeyboardButton(text="🔍 Начать поиск", callback_data="confirm_search_start"),
             InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
         ]
