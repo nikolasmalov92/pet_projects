@@ -1,9 +1,9 @@
 import asyncio
 import logging
 import traceback
-from Gruzii.ati_client import AtiClient
-from Gruzii.parser_cargo import parsing_data
-from Gruzii.menu import menu_details, get_search_controls
+from ati_client import AtiClient
+from parser_cargo import parsing_data
+from menu import menu_details, get_search_controls
 
 logging.basicConfig(level=logging.INFO)
 

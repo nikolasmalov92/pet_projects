@@ -1,7 +1,7 @@
 from aiogram.types import (InlineKeyboardMarkup, InlineKeyboardButton,
                            ReplyKeyboardMarkup, KeyboardButton)
-from Gruzii.config import loads_url
-from Gruzii.storage import get_car_loading_types, get_car_types
+from config import loads_url
+from storage import get_car_loading_types, get_car_types
 
 
 def get_main_menu(has_subscription=False, subscription_time_remaining=None, is_admin=False):

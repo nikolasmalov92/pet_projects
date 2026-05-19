@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Optional, List
-from Gruzii.config import DB_NAME
+from config import DB_NAME
 
 
 class SubscriptionType(Enum):

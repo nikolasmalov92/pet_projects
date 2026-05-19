@@ -6,10 +6,10 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
-from Gruzii.config import ADMIN_USER_ID
-from Gruzii.states import AdminStates
-from Gruzii.subscription import subscription_manager
-from Gruzii.menu import admin_panel_keyboard, remove_user_keyboard, disabling_subscriptions_keyboard
+from config import ADMIN_USER_ID
+from states import AdminStates
+from subscription import subscription_manager
+from menu import admin_panel_keyboard, remove_user_keyboard, disabling_subscriptions_keyboard
 
 import logging
 

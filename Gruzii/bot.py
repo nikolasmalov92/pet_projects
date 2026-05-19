@@ -5,19 +5,19 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from Gruzii.handlers.handler_admin import router as admin_router
-from Gruzii.handlers.handler_start import router as handler_start
-from Gruzii.handlers.handler_subscription import router as subscription_router
-from Gruzii.handlers.handler_direction import router as direction_router
-from Gruzii.handlers.handler_filter import router as filter_router
-from Gruzii.handlers.handler_volume import router as volume_router
-from Gruzii.handlers.handler_weight import router as weight_router
-from Gruzii.handlers.handler_type_selection_car_load import router as type_selection_car_load_router
-from Gruzii.handlers.handler_type_car import router as type_car_router
+from handlers.handler_admin import router as admin_router
+from handlers.handler_start import router as handler_start
+from handlers.handler_subscription import router as subscription_router
+from handlers.handler_direction import router as direction_router
+from handlers.handler_filter import router as filter_router
+from handlers.handler_volume import router as volume_router
+from handlers.handler_weight import router as weight_router
+from handlers.handler_type_selection_car_load import router as type_selection_car_load_router
+from handlers.handler_type_car import router as type_car_router
 
-from Gruzii.subscription import subscription_manager
-from Gruzii.config import telegram_token
-from Gruzii.storage import init_db, get_car_loading_types, get_car_types
+from subscription import subscription_manager
+from config import telegram_token
+from storage import init_db, get_car_loading_types, get_car_types
 
 
 logging.basicConfig(level=logging.INFO)

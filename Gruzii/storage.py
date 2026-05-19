@@ -7,8 +7,8 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from typing import Dict
-from Gruzii.config import geo_types
-from Gruzii.config import DB_NAME, processed_file, api_car_types, api_loading_types
+from config import geo_types
+from config import DB_NAME, processed_file, api_car_types, api_loading_types
 logging.basicConfig(level=logging.INFO)
 
 

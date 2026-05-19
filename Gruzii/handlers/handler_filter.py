@@ -4,12 +4,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import StateFilter
 
-from Gruzii.states import (FilterStates, WeightStates, VolumeStates,
-                           CarLoadTypeStates, CarTypeStates, SearchStates)
-from Gruzii.menu import (get_filter_setup_keyboard, get_car_load_type_keyboard,
-                         get_weight_range_keyboard, get_volume_range_keyboard,
-                         get_add_route_keyboard, get_car_type_keyboard, get_car_types)
-from Gruzii.storage import get_car_loading_types
+from states import (FilterStates, WeightStates, VolumeStates,
+                    CarLoadTypeStates, CarTypeStates, SearchStates)
+from menu import (get_filter_setup_keyboard, get_car_load_type_keyboard,
+                  get_weight_range_keyboard, get_volume_range_keyboard,
+                  get_add_route_keyboard, get_car_type_keyboard, get_car_types)
+from storage import get_car_loading_types
+
 router = Router()
 
 
@@ -30,6 +31,15 @@ async def start_filter_setup(callback: CallbackQuery, state: FSMContext):
         routes = data.get('routes', [])
         if route_index < len(routes):
             route = routes[route_index]
+            existing_filters = route.get('filters', {})
+            await state.update_data(
+                weight_min=existing_filters.get('weight_min'),
+                weight_max=existing_filters.get('weight_max'),
+                volume_from=existing_filters.get('volume_from'),
+                volume_to=existing_filters.get('volume_to'),
+                car_load_type_ids=existing_filters.get('car_load_type_ids', []),
+                car_type_ids=existing_filters.get('car_type_ids', [])
+            )
             await callback.message.edit_text(
                 f"⚙️ <b>Настройка фильтров для маршрута:</b>\n"
                 f"📍 {route['from_location']} → {route.get('to_location', 'любое')}\n\n"
@@ -95,7 +105,6 @@ async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
     elif callback.data == "finish_filters":
         data = await state.get_data()
         route_index = data.get('filtering_route_index')
-
         if route_index is not None:
             # Сохраняем фильтры в маршрут
             routes = data.get('routes', [])
@@ -108,38 +117,39 @@ async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
                     'car_load_type_ids': data.get('car_load_type_ids', []),
                     'car_type_ids': data.get('car_type_ids', []),
                 }
+
                 await state.update_data(routes=routes)
 
             # Очищаем временные данные
-            await state.update_data(
-                filtering_route_index=None,
-                filter_route_index=None,
-                weight_min=None,  # добавить
-                weight_max=None,  # добавить
-                volume_from=None,  # добавить
-                volume_to=None,  # добавить
-                car_load_type_ids=[],  # добавить
-                car_type_ids=[]  # добавить
-            )
+            await state.update_data(filtering_route_index=None,
+                                    filter_route_index=None,
+                                    weight_min=None,
+                                    weight_max=None,
+                                    volume_from=None,
+                                    volume_to=None,
+                                    car_load_type_ids=[],
+                                    car_type_ids=[])
 
             # Показываем список маршрутов
             routes_list = routes if route_index < len(routes) else data.get('routes', [])
-            routes_text = "\n".join(
-                f"  {i + 1}. {r['from_location']} → {r.get('to_location') or '🌐 Любое'}"
-                for i, r in enumerate(routes_list)
-            )
+            routes_text = "\n".join(f"  {i + 1}. {r['from_location']} → {r.get('to_location')
+                                                                         or '🌐 Любое'}"
+                                    for i, r in enumerate(routes_list))
 
-            await callback.message.edit_text(
-                f"✅ Маршруты добавлены!\n\n"
-                f"📋 <b>Текущие маршруты:</b>\n{routes_text}\n\n"
-                "Выберите действие:",
-                parse_mode="HTML",
-                reply_markup=get_add_route_keyboard()
-            )
+            await callback.message.edit_text(f"✅ Маршруты добавлены!\n\n"
+                                             f"📋 <b>Текущие маршруты:</b>\n{routes_text}\n\n"
+                                             "Выберите действие:", parse_mode="HTML",
+                                             reply_markup=get_add_route_keyboard())
+
+            await state.set_state(SearchStates.adding_route)
+
         else:
             await show_search_confirmation(callback.message, state)
 
-        await callback.answer()
+    else:
+        await show_search_confirmation(callback.message, state)
+
+    await callback.answer()
 
 
 @router.callback_query(StateFilter(FilterStates.setting_filters))

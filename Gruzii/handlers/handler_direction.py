@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Dict, Any
 
 from aiogram import F
@@ -7,16 +8,17 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from Gruzii.config import ADMIN_USER_ID
-from Gruzii.menu import (get_main_menu, get_type_keyboard, get_radius_keyboard,
+from config import ADMIN_USER_ID
+from menu import (get_main_menu, get_type_keyboard, get_radius_keyboard,
                          get_to_type_keyboard, get_add_route_keyboard, get_search_controls)
-from Gruzii.states import SearchStates
-from Gruzii.storage import get_type_id
-from Gruzii.subscription import subscription_manager
-from Gruzii.search_cargo import search_cargo_for_user
-from Gruzii.storage import tasks, active_searches
-from Gruzii.handlers.handler_filter import start_filter_setup
+from states import SearchStates
+from storage import get_type_id
+from subscription import subscription_manager
+from search_cargo import search_cargo_for_user
+from storage import tasks, active_searches
+from handlers.handler_filter import start_filter_setup
 
+logging.basicConfig(level=logging.INFO)
 router = Router()
 
 
@@ -130,8 +132,6 @@ async def add_route_and_show(message, state: FSMContext, is_any_direction: bool 
         to_type=None,
         to_radius=None,
     )
-    await state.update_data(routes=routes)
-
     routes_text = "\n".join(
         f"  {i + 1}. {r['from_location']} → {r.get('to_location') or '🌐 Любоe'}"
         for i, r in enumerate(routes)
@@ -144,6 +144,11 @@ async def add_route_and_show(message, state: FSMContext, is_any_direction: bool 
         "Добавить ещё маршрут или начать поиск?",
         parse_mode="HTML",
         reply_markup=get_add_route_keyboard()
+    )
+    await state.update_data(
+        weight_min=None, weight_max=None,
+        volume_from=None, volume_to=None,
+        car_load_type_ids=[], car_type_ids=[]
     )
 
 
@@ -172,7 +177,8 @@ async def finish_route(message, state: FSMContext):
 async def start_search(message: Message, state: FSMContext):
     user_id = message.from_user.id
     is_admin = (user_id == ADMIN_USER_ID)
-
+    await state.clear()
+    await state.set_state(SearchStates.setting_from_type)
     # Проверяем подписку
     if not is_admin and not subscription_manager.is_subscription_active(user_id):
         await message.answer(
@@ -184,7 +190,6 @@ async def start_search(message: Message, state: FSMContext):
         )
         return
 
-    await state.set_state(SearchStates.setting_from_type)
     await message.answer(
         "🎯 <b>Настройка поиска грузов</b>\n\n"
         "📍 <b>Шаг 1 из 4:</b> Откуда отправляем груз?\n"
@@ -308,6 +313,16 @@ async def set_to_type(message: Message, state: FSMContext):
 @router.callback_query(F.data == "add_another_route", StateFilter(SearchStates.adding_route))
 async def add_another_route(callback: CallbackQuery, state: FSMContext):
     """Пользователь хочет добавить ещё один маршрут"""
+    await state.update_data(
+        weight_min=None,
+        weight_max=None,
+        volume_from=None,
+        volume_to=None,
+        car_load_type_ids=[],
+        car_type_ids=[],
+        filter_route_index=None,
+        filtering_route_index=None
+    )
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer()
     await state.set_state(SearchStates.setting_from_type)
@@ -325,67 +340,73 @@ async def confirm_search_from_add_route(callback: CallbackQuery, state: FSMConte
     """Начать поиск из меню добавления маршрута"""
     data = await state.get_data()
     user_id = callback.from_user.id
-    active_searches[user_id] = True
 
+    active_searches[user_id] = True
     routes = data.get('routes', [])
+
+    # Формируем текст для пользователя
     if routes:
         routes_text = "\n".join(
-            f"  {i + 1}. {r['from_location']} → {r['to_location'] if r['to_location'] else '🌐 Любое направление'} "
+            f"  {i + 1}. {r['from_location']} → {r.get('to_location') or '🌐 Любое направление'}"
             for i, r in enumerate(routes)
         )
         search_info = f"🔍 Ищу грузы:\n{routes_text}"
     else:
-        search_info = f"🔍 Ищу грузы: {data['from_location']} → {data['to_location'] if data.get('to_location') else '🌐 Любое направление'}"
+        search_info = f"🔍 Ищу грузы: {data.get('from_location', '—')} → {data.get('to_location') or '🌐 Любое направление'}"
 
+    # Собираем фильтры
     filters_applied = []
-    if data.get('weight_min'):
-        filters_applied.append(f"вес от {data['weight_min']} т")
-    if data.get('weight_max'):
-        filters_applied.append(f"до {data['weight_max']} т")
-    if data.get('volume_from'):
-        filters_applied.append(f"объем от {data['volume_from']} м³")
-    if data.get('volume_to'):
-        filters_applied.append(f"объем до {data['volume_to']} м³")
+    if data.get('weight_min'): filters_applied.append(f"вес от {data['weight_min']} т")
+    if data.get('weight_max'): filters_applied.append(f"до {data['weight_max']} т")
+    if data.get('volume_from'): filters_applied.append(f"объем от {data['volume_from']} м³")
+    if data.get('volume_to'): filters_applied.append(f"объем до {data['volume_to']} м³")
     if filters_applied:
         search_info += f"\n🎯 Фильтры: {', '.join(filters_applied)}"
 
-    await callback.message.edit_text(
-        f"🚀 <b>Поиск запущен!</b>\n\n{search_info}\n",
-        parse_mode="HTML"
-    )
+    await callback.message.edit_text(f"🚀 <b>Поиск запущен!</b>\n\n{search_info}\n", parse_mode="HTML")
     await state.set_state(SearchStates.searching)
+
     await callback.message.answer(
         "<b>⏳ Первые результаты появятся через несколько секунд...</b>",
         parse_mode="HTML",
         reply_markup=get_search_controls()
     )
+    await callback.answer()
 
+    # Формируем список маршрутов для поиска
     search_routes = routes if routes else [{
-        'from_location': data['from_location'],
-        'from_type': data['from_type'],
-        'to_location': data['to_location'],
-        'to_type': data['to_type'],
+        'from_location': data.get('from_location'),
+        'from_type': data.get('from_type'),
+        'to_location': data.get('to_location'),
+        'to_type': data.get('to_type'),
     }]
 
     for route in search_routes:
-        task = asyncio.create_task(search_cargo_for_user(
-            user_id,
-            route['from_location'],
-            route['from_type'],
-            route.get('to_location'),
-            route.get('to_type'),
-            data.get('weight_min'),
-            data.get('weight_max'),
-            callback.message,
-            data.get('volume_from'),
-            data.get('volume_to'),
-            active_searches,
-            data.get('car_load_type_ids'),
-            data.get('car_type_ids', []),
-            from_radius=route.get('from_radius'),
-            to_radius=route.get('to_radius'),
-            any_direction=route.get('any_direction', False), ))
-        tasks[user_id] = task
+        try:
+            # Берем фильтры либо из конкретного маршрута, либо из общих
+            route_filters = route.get('filters', {})
+
+            task = asyncio.create_task(search_cargo_for_user(
+                user_id,
+                route['from_location'],
+                route['from_type'],
+                route.get('to_location'),
+                route.get('to_type'),
+                route_filters.get('weight_min', data.get('weight_min')),
+                route_filters.get('weight_max', data.get('weight_max')),
+                callback.message,
+                route_filters.get('volume_from', data.get('volume_from')),
+                route_filters.get('volume_to', data.get('volume_to')),
+                active_searches,
+                route_filters.get('car_load_type_ids', data.get('car_load_type_ids', [])),
+                route_filters.get('car_type_ids', data.get('car_type_ids', [])),
+                from_radius=route.get('from_radius'),
+                to_radius=route.get('to_radius'),
+                any_direction=route.get('any_direction', False)
+            ))
+            tasks[user_id] = task
+        except Exception as e:
+            logging.info(f"Ошибка: {e}")
 
 
 # Обработчик кнопки "Фильтр" - показываем список маршрутов

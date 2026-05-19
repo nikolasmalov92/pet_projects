@@ -3,8 +3,8 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
-from Gruzii.menu import (get_filter_setup_keyboard, get_car_type_keyboard)
-from Gruzii.states import CarTypeStates, FilterStates
+from menu import (get_filter_setup_keyboard, get_car_type_keyboard)
+from states import CarTypeStates, FilterStates
 
 router = Router()
 

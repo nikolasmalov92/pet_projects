@@ -6,11 +6,11 @@ from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram import F
 
-from Gruzii.storage import save_user, load_users, delete_processed
-from Gruzii.config import ADMIN_USER_ID
-from Gruzii.subscription import subscription_manager
-from Gruzii.menu import get_main_menu
-from Gruzii.storage import tasks, active_searches
+from storage import save_user, load_users, delete_processed
+from config import ADMIN_USER_ID
+from subscription import subscription_manager
+from menu import get_main_menu
+from storage import tasks, active_searches
 
 import logging
 

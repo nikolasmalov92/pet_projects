@@ -5,10 +5,10 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from Gruzii.config import ADMIN_USER_ID
-from Gruzii.menu import get_main_menu
-from Gruzii.storage import load_users
-from Gruzii.subscription import subscription_manager
+from config import ADMIN_USER_ID
+from menu import get_main_menu
+from storage import load_users
+from subscription import subscription_manager
 
 import logging
 

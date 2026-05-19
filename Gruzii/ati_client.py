@@ -2,7 +2,7 @@ import json
 import logging
 import requests
 
-from Gruzii.config import base_url, loads_url, headers
+from config import base_url, loads_url, headers
 
 logging.basicConfig(level=logging.INFO)
 

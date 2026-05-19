@@ -1,6 +1,6 @@
 import re
 
-from Gruzii.storage import *
+from storage import *
 import logging
 
 logging.basicConfig(level=logging.INFO)

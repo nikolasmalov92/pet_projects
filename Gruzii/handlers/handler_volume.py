@@ -3,8 +3,8 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
-from Gruzii.menu import (get_filter_setup_keyboard, get_volume_range_keyboard)
-from Gruzii.states import (FilterStates, VolumeStates)
+from menu import (get_filter_setup_keyboard, get_volume_range_keyboard)
+from states import (FilterStates, VolumeStates)
 
 router = Router()
 
