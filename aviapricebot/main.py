@@ -1,4 +1,7 @@
+import asyncio
 import logging
+
+from bot import bot, dp, search
 
 logging.basicConfig(
     level=logging.INFO,
@@ -8,11 +11,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-from bot import asyncio, bot, dp, search
-
 
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
     try:
         await dp.start_polling(bot)
     finally:

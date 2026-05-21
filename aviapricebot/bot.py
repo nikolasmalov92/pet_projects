@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from avia_search import AviaSearch
 from menu import menu_buy_ticket, create_calendar
-
+from models.search_state import SearchState
 from redis_client import get_user_data, set_user_data, update_user_data
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ load_dotenv()
 bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
 dp = Dispatcher()
 search = AviaSearch()
-search_semaphore = asyncio.Semaphore(5)
+search_semaphore = asyncio.Semaphore(25)
 
 
 @dp.message(Command("start"))
@@ -54,12 +54,12 @@ async def input_cities(message: Message):
         return
 
     user_id = message.from_user.id
-
-    await set_user_data(user_id, {
-        "from_city": cities[0].strip(),
-        "where_city": cities[1].strip(),
-        "selected_dates": []
-    })
+    state = SearchState(
+        from_city=cities[0].strip(),
+        where_city=cities[1].strip(),
+        selected_dates=[]
+    )
+    await set_user_data(user_id, state)
 
     markup = create_calendar(selected_dates=[])
     await message.answer("Выберите две даты (вылет и обратный прилёт):", reply_markup=markup)
@@ -73,7 +73,11 @@ async def process_navigation(callback: CallbackQuery):
 
     user_id = callback.from_user.id
     data = await get_user_data(user_id)
-    selected_dates = data.get('selected_dates', [])
+    if data is None:
+        await callback.answer("Начните сначала: отправьте города", show_alert=True)
+        return
+
+    selected_dates = data.selected_dates
 
     markup = create_calendar(year, month, selected_dates)
     await callback.message.edit_reply_markup(reply_markup=markup)
@@ -87,7 +91,11 @@ async def process_date_selection(callback: CallbackQuery):
     user_id = callback.from_user.id
 
     data = await get_user_data(user_id)
-    dates = data.get("selected_dates", [])
+    if data is None:
+        await callback.answer("Ошибка: данные не найдены. Начните заново.", show_alert=True)
+        return
+
+    dates = data.selected_dates.copy()
 
     if selected_date in dates:
         dates.remove(selected_date)
@@ -109,8 +117,8 @@ async def process_date_selection(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=markup)
 
     if len(dates) == 2:
-        from_city = data.get('from_city', "")
-        where_city = data.get('where_city', "")
+        from_city = data.from_city
+        where_city = data.where_city
         start_date = dates[0]
         end_date = dates[1]
 
@@ -128,15 +136,25 @@ async def process_date_selection(callback: CallbackQuery):
 
 async def search_ticket(message: Message, from_city: str, where_city: str, user_id: int):
     async with search_semaphore:
-        code_there, code_back = await asyncio.gather(
-            search.get_city_code(from_city),
-            search.get_city_code(where_city)
-        )
+        try:
+            code_there, code_back = await asyncio.gather(
+                search.get_city_code(from_city),
+                search.get_city_code(where_city)
+            )
+        except Exception as e:
+            logger.error(f"Ошибка: {e}")
+            await message.answer(
+                "❌ Ошибка при поиске городов. Попробуйте позже."
+            )
+            return
 
         data = await get_user_data(user_id)
+        if data is None or len(data.selected_dates) < 2:
+            await message.answer("❌ Ошибка: не выбраны даты. Начните сначала.")
+            return
 
-        start_date = data['selected_dates'][0]
-        end_date = data['selected_dates'][1]
+        start_date = data.selected_dates[0]
+        end_date = data.selected_dates[1]
 
         url_there = search.get_calendar(code_there, code_back, start_date)
         url_back = search.get_calendar(code_back, code_there, end_date)
