@@ -1,5 +1,6 @@
 import asyncio
 import os
+import logging
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F
@@ -10,13 +11,16 @@ from dotenv import load_dotenv
 from avia_search import AviaSearch
 from menu import menu_buy_ticket, create_calendar
 
+from redis_client import get_user_data, set_user_data, update_user_data
+
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
 dp = Dispatcher()
 search = AviaSearch()
-
-temp_search_data = {}
+search_semaphore = asyncio.Semaphore(5)
 
 
 @dp.message(Command("start"))
@@ -48,13 +52,16 @@ async def input_cities(message: Message):
     if len(cities) < 2:
         await message.answer("❌ Пожалуйста, укажите оба города через пробел или дефис")
         return
-    temp_search_data.clear()
 
-    temp_search_data['from_city'] = cities[0].strip()
-    temp_search_data['where_city'] = cities[1].strip()
-    temp_search_data['selected_dates'] = []
+    user_id = message.from_user.id
 
-    markup = create_calendar(selected_dates=temp_search_data['selected_dates'])
+    await set_user_data(user_id, {
+        "from_city": cities[0].strip(),
+        "where_city": cities[1].strip(),
+        "selected_dates": []
+    })
+
+    markup = create_calendar(selected_dates=[])
     await message.answer("Выберите две даты (вылет и обратный прилёт):", reply_markup=markup)
 
 
@@ -64,7 +71,11 @@ async def process_navigation(callback: CallbackQuery):
     _, year, month = callback.data.split('_')
     year, month = int(year), int(month)
 
-    markup = create_calendar(year, month, temp_search_data.get('selected_dates', []))
+    user_id = callback.from_user.id
+    data = await get_user_data(user_id)
+    selected_dates = data.get('selected_dates', [])
+
+    markup = create_calendar(year, month, selected_dates)
     await callback.message.edit_reply_markup(reply_markup=markup)
     await callback.answer()
 
@@ -73,32 +84,35 @@ async def process_navigation(callback: CallbackQuery):
 async def process_date_selection(callback: CallbackQuery):
     """Обработка выбора даты"""
     selected_date = callback.data.replace("date_", "")
+    user_id = callback.from_user.id
 
-    if 'selected_dates' not in temp_search_data:
-        temp_search_data['selected_dates'] = []
+    data = await get_user_data(user_id)
+    dates = data.get("selected_dates", [])
 
-    if selected_date in temp_search_data['selected_dates']:
-        temp_search_data['selected_dates'].remove(selected_date)
-        await callback.answer(f"❌ Дата {selected_date} удалена")
+    if selected_date in dates:
+        dates.remove(selected_date)
+        await callback.answer(f'❌ Дата {selected_date} удалена')
+
     else:
-        if len(temp_search_data['selected_dates']) < 2:
-            temp_search_data['selected_dates'].append(selected_date)
+        if len(dates) < 2:
+            dates.append(selected_date)
             await callback.answer(f"✅ Выбрана дата: {selected_date}")
         else:
-            removed_date = temp_search_data['selected_dates'][0]
-            temp_search_data['selected_dates'] = temp_search_data['selected_dates'][1:] + [selected_date]
+            removed_date = dates[0]
+            dates = dates[1:] + [selected_date]
             await callback.answer(f"✅ Заменена дата {removed_date} на {selected_date}")
 
-    temp_search_data['selected_dates'].sort(key=lambda x: datetime.strptime(x, "%d.%m.%Y"))
+    dates.sort(key=lambda x: datetime.strptime(x, "%d.%m.%Y"))
+    await update_user_data(user_id, selected_dates=dates)
 
-    markup = create_calendar(selected_dates=temp_search_data['selected_dates'])
+    markup = create_calendar(selected_dates=dates)
     await callback.message.edit_reply_markup(reply_markup=markup)
 
-    if len(temp_search_data['selected_dates']) == 2:
-        from_city = temp_search_data['from_city']
-        where_city = temp_search_data['where_city']
-        start_date = temp_search_data['selected_dates'][0]
-        end_date = temp_search_data['selected_dates'][1]
+    if len(dates) == 2:
+        from_city = data.get('from_city', "")
+        where_city = data.get('where_city', "")
+        start_date = dates[0]
+        end_date = dates[1]
 
         await callback.message.edit_text(
             f"✅ <b>Параметры поиска:</b>\n\n"
@@ -109,59 +123,66 @@ async def process_date_selection(callback: CallbackQuery):
             f"⏳ Ищем лучшие предложения...",
             parse_mode="HTML"
         )
-        await search_ticket(callback.message, from_city, where_city)
+        await search_ticket(callback.message, from_city, where_city, user_id)
 
 
-async def search_ticket(message: Message, from_city: str, where_city: str):
-    code_there = search.get_city_code(from_city)
-    code_back = search.get_city_code(where_city)
+async def search_ticket(message: Message, from_city: str, where_city: str, user_id: int):
+    async with search_semaphore:
+        code_there, code_back = await asyncio.gather(
+            search.get_city_code(from_city),
+            search.get_city_code(where_city)
+        )
 
-    start_date = temp_search_data['selected_dates'][0]
-    end_date = temp_search_data['selected_dates'][1]
+        data = await get_user_data(user_id)
 
-    url_there = search.get_calendar(code_there, code_back, start_date)
-    data_there = search.get_data(url_there)
+        start_date = data['selected_dates'][0]
+        end_date = data['selected_dates'][1]
 
-    url_back = search.get_calendar(code_back, code_there, end_date)
-    data_back = search.get_data(url_back)
+        url_there = search.get_calendar(code_there, code_back, start_date)
+        url_back = search.get_calendar(code_back, code_there, end_date)
 
-    if data_there and data_back:
-        tickets_there, tickets_back = search.get_tickets_near_dates(data_there, data_back, start_date, end_date)
+        data_there, data_back = await asyncio.gather(
+            search.get_data(url_there),
+            search.get_data(url_back)
+        )
 
-        if tickets_there and tickets_back:
-            combinations_shown = 0
-            for i, ticket_there in enumerate(tickets_there[:3]):
-                for j, ticket_back in enumerate(tickets_back[:3]):
-                    if combinations_shown >= 3:
-                        break
+        if data_there and data_back:
+            tickets_there, tickets_back = search.get_tickets_near_dates(data_there, data_back, start_date, end_date)
 
-                    date_there_formatted = format_date(ticket_there[0])
-                    date_back_formatted = format_date(ticket_back[0])
-                    total_price = ticket_there[1] + ticket_back[1]
-                    date_there_url = ticket_there[0][8:10] + ticket_there[0][5:7]
-                    date_back_url = ticket_back[0][8:10] + ticket_back[0][5:7]
-                    buy_ticket = (f"{os.getenv('API_FLIGHT_SEARCH')}{code_there}{date_there_url}"
-                                  f"{code_back}{date_back_url}1")
+            if tickets_there and tickets_back:
+                combinations_shown = 0
+                for i, ticket_there in enumerate(tickets_there[:3]):
+                    for j, ticket_back in enumerate(tickets_back[:3]):
+                        if combinations_shown >= 3:
+                            break
 
-                    keyboard = menu_buy_ticket(buy_ticket)
+                        date_there_formatted = format_date(ticket_there[0])
+                        date_back_formatted = format_date(ticket_back[0])
+                        total_price = ticket_there[1] + ticket_back[1]
+                        date_there_url = ticket_there[0][8:10] + ticket_there[0][5:7]
+                        date_back_url = ticket_back[0][8:10] + ticket_back[0][5:7]
+                        buy_ticket = (f"{os.getenv('API_FLIGHT_SEARCH')}{code_there}{date_there_url}"
+                                      f"{code_back}{date_back_url}1")
 
-                    message_text = (
-                        f"🎫 <b>Вариант {combinations_shown + 1}:</b>\n\n"
-                        f"✈️ Туда: {date_there_formatted}\n"
-                        f"💵 Цена: {ticket_there[1]} руб.\n\n"
-                        f"✈️ Обратно: {date_back_formatted}\n"
-                        f"💵 Цена: {ticket_back[1]} руб.\n\n"
-                        f"💰 <b>Общая стоимость: {total_price} руб.</b>"
-                    )
+                        keyboard = menu_buy_ticket(buy_ticket)
 
-                    await message.answer(message_text, parse_mode="HTML", reply_markup=keyboard)
-                    combinations_shown += 1
-                    await asyncio.sleep(3)
+                        message_text = (
+                            f"🎫 <b>Вариант {combinations_shown + 1}:</b>\n\n"
+                            f"✈️ Туда: {date_there_formatted}\n"
+                            f"💵 Цена: {ticket_there[1]} руб.\n\n"
+                            f"✈️ Обратно: {date_back_formatted}\n"
+                            f"💵 Цена: {ticket_back[1]} руб.\n\n"
+                            f"💰 <b>Общая стоимость: {total_price} руб.</b>"
+                        )
 
+                        await message.answer(message_text, parse_mode="HTML", reply_markup=keyboard)
+                        combinations_shown += 1
+                        await asyncio.sleep(3)
+
+            else:
+                await message.answer("❌ Не удалось найти билеты в выбранном диапазоне дат. Попробуйте другие даты.")
         else:
-            await message.answer("❌ Не удалось найти билеты в выбранном диапазоне дат. Попробуйте другие даты.")
-    else:
-        await message.answer("❌ Ошибка при получении данных о перелетах")
+            await message.answer("❌ Ошибка при получении данных о перелетах")
 
 
 def format_date(date_str):

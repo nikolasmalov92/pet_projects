@@ -1,11 +1,12 @@
-import requests
+import asyncio
+
+import aiohttp
 import logging
 import os
 
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
-logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -19,8 +20,18 @@ class AviaSearch:
         self.success_code = 200
         self.types = ['city', 'airport', 'country']
         self.locale = 'ru_RU'
+        self._session: aiohttp.ClientSession | None = None
 
-    def get_city_code(self, city_name: str) -> dict:
+    async def get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
+
+    async def get_city_code(self, city_name: str) -> dict:
         url = f"{self.api_city_code}/v2/places.json"
         params = {
             'locale': self.locale,
@@ -28,14 +39,18 @@ class AviaSearch:
             'term': city_name,
             'types[]': self.types
         }
+        try:
+            session = await self.get_session()
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                data = await response.json()
+                if not data:
+                    raise ValueError(f'Город {city_name} не найден')
+                code = data[0].get("code")
+                return code
 
-        response = requests.get(url, params=params, timeout=10)
-        data = response.json()
-        if not data:
-            raise ValueError(f"Город '{city_name}' не найден")
-
-        first_result = data[0]
-        return first_result.get("code")
+        except asyncio.TimeoutError:
+            logger.error(f"Таймаут при поиске города: {city_name}")
+            raise ValueError(f"Сервер не ответил вовремя для города '{city_name}'")
 
     def get_calendar(self, origin, destination, input_month):
         codes = [origin, destination]
@@ -54,12 +69,19 @@ class AviaSearch:
 
         return url
 
-    def get_data(self, url):
-        response = requests.get(url)
-        if response.status_code == self.success_code:
-            return response.json()
-        logger.error(f"Соединение с сервером не установлено: {response.status_code}")
-        return None
+    async def get_data(self, url):
+        try:
+            session = await self.get_session()
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status == self.success_code:
+                    data = await response.json()
+                    return data
+
+                logger.error(f"Соединение с сервером не установлено: {response.status}")
+                return None
+        except asyncio.TimeoutError:
+            logger.error(f"Таймаут при запросе: {url}")
+            return None
 
     def get_tickets_near_dates(self, data_there, data_back, start_date, end_date, days_range=3):
         """Находит билеты в диапазоне ±days_range дней от выбранных дат"""
@@ -102,5 +124,3 @@ class AviaSearch:
             date_range.append(new_date.strftime("%Y-%m-%d"))
 
         return date_range
-
-
