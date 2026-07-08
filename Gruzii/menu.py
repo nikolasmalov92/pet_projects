@@ -229,10 +229,16 @@ def get_presets_keyboard(presets: list):
     """Клавиатура со списком пресетов пользователя."""
     keyboard = []
     for preset in presets:
-        keyboard.append([InlineKeyboardButton(
-            text=f"📌 {preset['name']}",
-            callback_data=f"use_preset_{preset['id']}"
-        )])
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"📌 {preset['name']}",
+                callback_data=f"use_preset_{preset['id']}"
+            ),
+            InlineKeyboardButton(
+                text="🗑",
+                callback_data=f"del_preset_{preset['id']}"
+            ),
+        ])
     keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_presets")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

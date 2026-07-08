@@ -44,6 +44,39 @@ async def show_my_presets(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# ── Удалить пресет прямо из списка ────────────────────────────────────
+
+@router.callback_query(F.data.startswith("del_preset_"), StateFilter(PresetStates.selecting_preset))
+async def delete_preset_from_list(callback: CallbackQuery, state: FSMContext):
+    """Удаляет пресет из списка и обновляет клавиатуру."""
+    preset_id = int(callback.data.replace("del_preset_", ""))
+    user_id = callback.from_user.id
+
+    deleted = delete_preset(preset_id, user_id)
+    if deleted:
+        await callback.answer("Фильтр удалён")
+    else:
+        await callback.answer("Фильтр не найден", show_alert=True)
+        return
+
+    presets = get_user_presets(user_id)
+    if presets:
+        await callback.message.edit_text(
+            "📂 <b>Ваши сохранённые фильтры:</b>\n\n"
+            "Выберите фильтр для использования:",
+            parse_mode="HTML",
+            reply_markup=get_presets_keyboard(presets)
+        )
+    else:
+        await callback.message.edit_text(
+            "📂 Сохранённых фильтров нет.\n\n"
+            "Настройте маршрут и фильтры, затем сохраните их кнопкой «💾 Сохранить фильтр».",
+            parse_mode="HTML",
+            reply_markup=get_add_route_keyboard()
+        )
+        await state.set_state(SearchStates.adding_route)
+
+
 # ── Выбор пресета — показ действий ───────────────────────────────────
 
 @router.callback_query(F.data.startswith("use_preset_"), StateFilter(PresetStates.selecting_preset))
@@ -342,28 +375,37 @@ async def save_preset_with_name(message: Message, state: FSMContext):
     data = await state.get_data()
     routes = data.get('routes', [])
 
-    # Если есть маршруты — сохраняем первый (или можно сохранить все)
     if routes:
-        route = routes[-1]  # Последний добавленный маршрут
-        preset_data = {
-            'from_location': route.get('from_location'),
-            'from_type': route.get('from_type'),
-            'from_type_name': route.get('from_type_name', ''),
-            'from_radius': route.get('from_radius'),
-            'to_location': route.get('to_location'),
-            'to_type': route.get('to_type'),
-            'to_type_name': route.get('to_type_name', ''),
-            'to_radius': route.get('to_radius'),
-            'any_direction': route.get('any_direction', False),
-            'weight_min': route.get('filters', {}).get('weight_min') or data.get('weight_min'),
-            'weight_max': route.get('filters', {}).get('weight_max') or data.get('weight_max'),
-            'volume_from': route.get('filters', {}).get('volume_from') or data.get('volume_from'),
-            'volume_to': route.get('filters', {}).get('volume_to') or data.get('volume_to'),
-            'car_load_type_ids': route.get('filters', {}).get('car_load_type_ids') or data.get('car_load_type_ids', []),
-            'car_type_ids': route.get('filters', {}).get('car_type_ids') or data.get('car_type_ids', []),
-        }
+        # Сохраняем каждый маршрут как отдельный пресет
+        saved_count = 0
+        for i, route in enumerate(routes):
+            suffix = f" ({i + 1})" if len(routes) > 1 else ""
+            preset_name = f"{name}{suffix}"
+            filters = route.get('filters', {})
+            preset_data = {
+                'from_location': route.get('from_location'),
+                'from_type': route.get('from_type'),
+                'from_type_name': route.get('from_type_name', ''),
+                'from_radius': route.get('from_radius'),
+                'to_location': route.get('to_location'),
+                'to_type': route.get('to_type'),
+                'to_type_name': route.get('to_type_name', ''),
+                'to_radius': route.get('to_radius'),
+                'any_direction': route.get('any_direction', False),
+                'weight_min': filters.get('weight_min'),
+                'weight_max': filters.get('weight_max'),
+                'volume_from': filters.get('volume_from'),
+                'volume_to': filters.get('volume_to'),
+                'car_load_type_ids': filters.get('car_load_type_ids', []),
+                'car_type_ids': filters.get('car_type_ids', []),
+            }
+            save_filter_preset(user_id, preset_name, preset_data)
+            saved_count += 1
+
+        if saved_count > 1:
+            name = f"{name} (×{saved_count})"
     else:
-        # Нет маршрутов — сохраняем только фильтры
+        # Нет маршрутов — сохраняем только фильтры из state
         preset_data = {
             'from_location': data.get('from_location'),
             'from_type': data.get('from_type'),
@@ -381,8 +423,7 @@ async def save_preset_with_name(message: Message, state: FSMContext):
             'car_load_type_ids': data.get('car_load_type_ids', []),
             'car_type_ids': data.get('car_type_ids', []),
         }
-
-    preset_id = save_filter_preset(user_id, name, preset_data)
+        save_filter_preset(user_id, name, preset_data)
 
     saved_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
