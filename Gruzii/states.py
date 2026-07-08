@@ -45,6 +45,12 @@ class CarTypeStates(StatesGroup):
     setting_car_type = State()
 
 
+class PresetStates(StatesGroup):
+    naming_preset = State()
+    selecting_preset = State()
+    editing_preset = State()
+
+
 class AdminStates(StatesGroup):
     waiting_for_subscription_id = State()
     waiting_for_take_subscription_id = State()

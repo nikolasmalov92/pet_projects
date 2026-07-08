@@ -61,6 +61,30 @@ def init_db():
             )
         ''')
 
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS FilterPresets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                from_location TEXT,
+                from_type INTEGER,
+                from_type_name TEXT,
+                from_radius INTEGER,
+                to_location TEXT,
+                to_type INTEGER,
+                to_type_name TEXT,
+                to_radius INTEGER,
+                any_direction BOOLEAN DEFAULT 0,
+                weight_min REAL,
+                weight_max REAL,
+                volume_from REAL,
+                volume_to REAL,
+                car_load_type_ids TEXT DEFAULT '[]',
+                car_type_ids TEXT DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         conn.commit()
 
 
@@ -277,3 +301,139 @@ def get_car_loading_type_name_by_id(car_loading_type_id: str) -> Optional[str]:
         cursor.execute("SELECT Name FROM CarLoadingTypes WHERE Id = ?", (car_loading_type_id,))
         result = cursor.fetchone()
         return result[0] if result else None
+
+
+# ── Filter Presets CRUD ──────────────────────────────────────────────
+
+def save_filter_preset(user_id: int, name: str, preset_data: dict) -> int:
+    """Сохраняет пресет фильтра. Возвращает id пресета."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO FilterPresets
+                (user_id, name, from_location, from_type, from_type_name, from_radius,
+                 to_location, to_type, to_type_name, to_radius, any_direction,
+                 weight_min, weight_max, volume_from, volume_to,
+                 car_load_type_ids, car_type_ids)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id, name,
+            preset_data.get('from_location'),
+            preset_data.get('from_type'),
+            preset_data.get('from_type_name'),
+            preset_data.get('from_radius'),
+            preset_data.get('to_location'),
+            preset_data.get('to_type'),
+            preset_data.get('to_type_name'),
+            preset_data.get('to_radius'),
+            preset_data.get('any_direction', False),
+            preset_data.get('weight_min'),
+            preset_data.get('weight_max'),
+            preset_data.get('volume_from'),
+            preset_data.get('volume_to'),
+            json.dumps(preset_data.get('car_load_type_ids', []), ensure_ascii=False),
+            json.dumps(preset_data.get('car_type_ids', []), ensure_ascii=False),
+        ))
+        preset_id = cursor.lastrowid
+        conn.commit()
+        return preset_id
+
+
+def get_user_presets(user_id: int) -> list[dict]:
+    """Возвращает все пресеты пользователя."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, from_location, from_type, from_type_name, from_radius,
+                   to_location, to_type, to_type_name, to_radius, any_direction,
+                   weight_min, weight_max, volume_from, volume_to,
+                   car_load_type_ids, car_type_ids, created_at
+            FROM FilterPresets WHERE user_id = ? ORDER BY id
+        ''', (user_id,))
+        rows = cursor.fetchall()
+        presets = []
+        for row in rows:
+            presets.append({
+                'id': row[0], 'name': row[1],
+                'from_location': row[2], 'from_type': row[3],
+                'from_type_name': row[4], 'from_radius': row[5],
+                'to_location': row[6], 'to_type': row[7],
+                'to_type_name': row[8], 'to_radius': row[9],
+                'any_direction': bool(row[10]),
+                'weight_min': row[11], 'weight_max': row[12],
+                'volume_from': row[13], 'volume_to': row[14],
+                'car_load_type_ids': json.loads(row[15]) if row[15] else [],
+                'car_type_ids': json.loads(row[16]) if row[16] else [],
+                'created_at': row[17],
+            })
+        return presets
+
+
+def get_preset_by_id(preset_id: int, user_id: int) -> Optional[dict]:
+    """Возвращает конкретный пресет по ID (только если принадлежит пользователю)."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, from_location, from_type, from_type_name, from_radius,
+                   to_location, to_type, to_type_name, to_radius, any_direction,
+                   weight_min, weight_max, volume_from, volume_to,
+                   car_load_type_ids, car_type_ids
+            FROM FilterPresets WHERE id = ? AND user_id = ?
+        ''', (preset_id, user_id))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return {
+            'id': row[0], 'name': row[1],
+            'from_location': row[2], 'from_type': row[3],
+            'from_type_name': row[4], 'from_radius': row[5],
+            'to_location': row[6], 'to_type': row[7],
+            'to_type_name': row[8], 'to_radius': row[9],
+            'any_direction': bool(row[10]),
+            'weight_min': row[11], 'weight_max': row[12],
+            'volume_from': row[13], 'volume_to': row[14],
+            'car_load_type_ids': json.loads(row[15]) if row[15] else [],
+            'car_type_ids': json.loads(row[16]) if row[16] else [],
+        }
+
+
+def delete_preset(preset_id: int, user_id: int) -> bool:
+    """Удаляет пресет. Возвращает True если удалён."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM FilterPresets WHERE id = ? AND user_id = ?', (preset_id, user_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def update_filter_preset(preset_id: int, user_id: int, preset_data: dict) -> bool:
+    """Обновляет существующий пресет."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE FilterPresets SET
+                from_location=?, from_type=?, from_type_name=?, from_radius=?,
+                to_location=?, to_type=?, to_type_name=?, to_radius=?, any_direction=?,
+                weight_min=?, weight_max=?, volume_from=?, volume_to=?,
+                car_load_type_ids=?, car_type_ids=?
+            WHERE id = ? AND user_id = ?
+        ''', (
+            preset_data.get('from_location'),
+            preset_data.get('from_type'),
+            preset_data.get('from_type_name'),
+            preset_data.get('from_radius'),
+            preset_data.get('to_location'),
+            preset_data.get('to_type'),
+            preset_data.get('to_type_name'),
+            preset_data.get('to_radius'),
+            preset_data.get('any_direction', False),
+            preset_data.get('weight_min'),
+            preset_data.get('weight_max'),
+            preset_data.get('volume_from'),
+            preset_data.get('volume_to'),
+            json.dumps(preset_data.get('car_load_type_ids', []), ensure_ascii=False),
+            json.dumps(preset_data.get('car_type_ids', []), ensure_ascii=False),
+            preset_id, user_id,
+        ))
+        conn.commit()
+        return cursor.rowcount > 0

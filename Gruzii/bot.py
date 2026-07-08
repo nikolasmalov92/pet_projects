@@ -14,6 +14,7 @@ from handlers.handler_volume import router as volume_router
 from handlers.handler_weight import router as weight_router
 from handlers.handler_type_selection_car_load import router as type_selection_car_load_router
 from handlers.handler_type_car import router as type_car_router
+from handlers.handler_presets import router as presets_router
 
 from subscription import subscription_manager
 from config import telegram_token
@@ -43,6 +44,7 @@ dp.include_router(volume_router)
 dp.include_router(weight_router)
 dp.include_router(type_selection_car_load_router)
 dp.include_router(type_car_router)
+dp.include_router(presets_router)
 
 
 async def main():

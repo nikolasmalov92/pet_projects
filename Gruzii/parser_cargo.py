@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 
 from storage import *
 import logging
@@ -35,11 +36,23 @@ def parsing_data(data, user_id):
     elif not isinstance(processed_list, list):
         processed_list = []
 
+    today_utc = datetime.now(timezone.utc).date()
+
     for load in loads:
         try:
             load_num = load.get('loadNumber', '')
             if not load_num or load_num in processed_list:
                 continue
+
+            # Пропускаем грузы, которые не были созданы сегодня (обновления старых заявок)
+            add_date_str = load.get('addDate', '')
+            if add_date_str:
+                try:
+                    add_date = datetime.fromisoformat(add_date_str.replace('Z', '+00:00')).date()
+                    if add_date != today_utc:
+                        continue
+                except (ValueError, AttributeError):
+                    pass
 
             direction = format_direction(load)
             transport = format_transport(load)

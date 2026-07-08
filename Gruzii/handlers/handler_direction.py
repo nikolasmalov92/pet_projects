@@ -10,7 +10,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 
 from config import ADMIN_USER_ID
 from menu import (get_main_menu, get_type_keyboard, get_radius_keyboard,
-                         get_to_type_keyboard, get_add_route_keyboard, get_search_controls)
+                         get_to_type_keyboard, get_add_route_keyboard, get_search_controls,
+                         get_preset_save_keyboard)
 from states import SearchStates
 from storage import get_type_id
 from subscription import subscription_manager
@@ -338,7 +339,19 @@ async def add_another_route(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "confirm_search_start", StateFilter(SearchStates.adding_route))
 async def confirm_search_from_add_route(callback: CallbackQuery, state: FSMContext):
-    """Начать поиск из меню добавления маршрута"""
+    """Показывает подтверждение перед запуском поиска с опцией сохранения фильтра."""
+    await callback.message.edit_text(
+        "🚀 <b>Всё готово к поиску!</b>\n\n"
+        "Хотите сохранить текущие фильтры для быстрого доступа в будущем?",
+        parse_mode="HTML",
+        reply_markup=get_preset_save_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "start_search_now", StateFilter(SearchStates.adding_route))
+async def start_search_now(callback: CallbackQuery, state: FSMContext):
+    """Запуск поиска (после подтверждения)."""
     data = await state.get_data()
     user_id = callback.from_user.id
 

@@ -81,7 +81,12 @@ def get_add_route_keyboard():
         [
             InlineKeyboardButton(text="➕ Добавить ещё", callback_data="add_another_route"),
             InlineKeyboardButton(text="⚙️ Фильтр", callback_data="show_filters_menu"),
+        ],
+        [
+            InlineKeyboardButton(text="📂 Мои фильтры", callback_data="show_my_presets"),
             InlineKeyboardButton(text="🔍 Начать поиск", callback_data="confirm_search_start"),
+        ],
+        [
             InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
         ]
     ])
@@ -216,5 +221,40 @@ def disabling_subscriptions_keyboard():
 def remove_user_keyboard(target_user_id):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⚠️ Да, удалить", callback_data=f"confirm_delete_{target_user_id}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
+    ])
+
+
+def get_presets_keyboard(presets: list):
+    """Клавиатура со списком пресетов пользователя."""
+    keyboard = []
+    for preset in presets:
+        keyboard.append([InlineKeyboardButton(
+            text=f"📌 {preset['name']}",
+            callback_data=f"use_preset_{preset['id']}"
+        )])
+    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_presets")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_preset_actions_keyboard(preset_id: int):
+    """Клавиатура действий с пресетом."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔍 Искать", callback_data=f"use_preset_{preset_id}"),
+            InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_preset_{preset_id}"),
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_preset_{preset_id}"),
+        ],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_presets")]
+    ])
+
+
+def get_preset_save_keyboard():
+    """Клавиатура подтверждения сохранения пресета."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💾 Сохранить фильтр", callback_data="save_current_as_preset"),
+            InlineKeyboardButton(text="🔍 Начать поиск", callback_data="start_search_now"),
+        ],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
     ])

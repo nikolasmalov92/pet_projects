@@ -239,7 +239,6 @@ class AtiClient:
                 "dates": {"date_option": "today-plus"},
                 "exclude_tenders": False,
                 "extra_params": 0,
-                "change_date": "today",
                 "sorting_type": 2,
             },
         }
