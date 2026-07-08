@@ -4,7 +4,6 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiohttp import ClientTimeout
 
 from handlers.handler_admin import router as admin_router
 from handlers.handler_start import router as handler_start
@@ -49,8 +48,8 @@ dp.include_router(type_car_router)
 async def main():
     logger.info("Запуск бота")
 
-    # Увеличенный таймаут для стабильности при проблемах с сетью
-    session = AiohttpSession(timeout=ClientTimeout(total=180, connect=30))
+    # Увеличенный таймаут (секунды) для стабильности при проблемах с сетью
+    session = AiohttpSession(timeout=180)
     bot = Bot(token=telegram_token, session=session)
 
     # Очистка истекших подписок при старте

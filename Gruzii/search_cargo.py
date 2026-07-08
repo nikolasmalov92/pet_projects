@@ -83,6 +83,25 @@ async def search_cargo_for_user(
     consecutive_errors = 0
     ati_client = AtiClient()
 
+    try:
+        await _search_loop(
+            ati_client, user_id, from_name, from_type, to_name, to_type,
+            weight_min, weight_max, message, volume_from, volume_to,
+            active_searches, car_load_type_ids, car_type_ids,
+            from_radius, to_radius, any_direction,
+            search_count, found_count, last_sent_loads, consecutive_errors,
+        )
+    finally:
+        await ati_client.close()
+
+
+async def _search_loop(
+    ati_client, user_id, from_name, from_type, to_name, to_type,
+    weight_min, weight_max, message, volume_from, volume_to,
+    active_searches, car_load_type_ids, car_type_ids,
+    from_radius, to_radius, any_direction,
+    search_count, found_count, last_sent_loads, consecutive_errors,
+):
     while active_searches.get(user_id, False):
         try:
             # Получаем ID городов с retry логикой

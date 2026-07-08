@@ -46,7 +46,10 @@ class AtiClient:
     async def close(self):
         """Закрывает асинхронную сессию."""
         if self._async_session and not self._async_session.closed:
-            await self._async_session.close()
+            try:
+                await self._async_session.close()
+            except Exception:
+                pass
 
     async def _make_async_request(
         self,
