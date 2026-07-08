@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from bot import bot, dp, search
+from bot import bot, dp, search, price_monitor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
+    asyncio.create_task(price_monitor())
     try:
         await dp.start_polling(bot)
     finally:

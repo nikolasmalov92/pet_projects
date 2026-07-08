@@ -1,6 +1,25 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import calendar
 from datetime import datetime
+
+
+def get_main_menu() -> ReplyKeyboardMarkup:
+    buttons = [
+        [KeyboardButton(text="🔍 Новый поиск")]
+    ]
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=False)
+
+
+def get_stop_keyboard() -> ReplyKeyboardMarkup:
+    """Клавиатура с кнопкой остановки"""
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="⛔ Остановить")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+    return keyboard
 
 
 def menu_buy_ticket(ticket_url):

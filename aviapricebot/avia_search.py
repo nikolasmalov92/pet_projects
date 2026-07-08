@@ -83,7 +83,7 @@ class AviaSearch:
             logger.error(f"Таймаут при запросе: {url}")
             return None
 
-    def get_tickets_near_dates(self, data_there, data_back, start_date, end_date, days_range=3):
+    def get_tickets_near_dates(self, data_there, data_back, start_date, end_date, days_range=0):
         """Находит билеты в диапазоне ±days_range дней от выбранных дат"""
         if not data_there or 'prices' not in data_there or not data_back or 'prices' not in data_back:
             return [], []
@@ -124,3 +124,40 @@ class AviaSearch:
             date_range.append(new_date.strftime("%Y-%m-%d"))
 
         return date_range
+
+    async def get_min_price_for_dates(self, origin_code: str, dest_code: str, date_depart: str,
+                                      date_return: str) -> int | None:
+        """
+        Возвращает минимальную общую цену (туда+обратно) для точных дат.
+        date_depart, date_return в формате DD.MM.YYYY.
+        """
+        url_there = self.get_calendar(origin_code, dest_code, date_depart)
+        url_back = self.get_calendar(dest_code, origin_code, date_return)
+        data_there, data_back = await asyncio.gather(
+            self.get_data(url_there),
+            self.get_data(url_back)
+        )
+        if not data_there or not data_back:
+            return None
+
+        def fmt(date_str):
+            d, m, y = date_str.split('.')
+            return f"{y}-{m}-{d}"
+
+        depart_fmt = fmt(date_depart)
+        return_fmt = fmt(date_return)
+
+        price_there = None
+        price_back = None
+        for item in data_there.get('prices', []):
+            if item.get('depart_date') == depart_fmt and item.get('price', 0) > 0:
+                price_there = item['price']
+                break
+        for item in data_back.get('prices', []):
+            if item.get('depart_date') == return_fmt and item.get('price', 0) > 0:
+                price_back = item['price']
+                break
+
+        if price_there is not None and price_back is not None:
+            return price_there + price_back
+        return None

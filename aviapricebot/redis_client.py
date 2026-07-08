@@ -54,3 +54,23 @@ async def update_user_data(user_id: int, **kwargs):
         await set_user_data(user_id, upd_data)
     except Exception as e:
         logger.error(f"Redis update error for user {user_id}: {e}")
+
+
+async def set_last_price(user_id: int, price: int, ttl: int = 86400):
+    """Сохраняем последнюю известную минимальную цену (на 24 часа)."""
+    try:
+        r = await get_redis()
+        await r.setex(f"search:price:{user_id}", ttl, str(price))
+    except Exception as e:
+        logger.error(f"Redis set price error for user {user_id}: {e}")
+
+
+async def get_last_price(user_id: int) -> int | None:
+    """Получаем последнюю сохранённую цену."""
+    try:
+        r = await get_redis()
+        price = await r.get(f"search:price:{user_id}")
+        return int(price) if price else None
+    except Exception as e:
+        logger.error(f"Redis get price error for user {user_id}: {e}")
+        return None
