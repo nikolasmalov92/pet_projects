@@ -113,31 +113,36 @@ def save_user(user_id: int) -> bool:
         return True
 
 
-def load_processed(user_id: int) -> list:
-    """Загружает список обработанных грузов для пользователя."""
+def load_processed(user_id: int) -> dict:
+    """Загружает словарь обработанных грузов {loadNumber: {fields...}} для пользователя."""
     try:
         if not os.path.exists(processed_file):
-            return []
+            return {}
 
         with open(processed_file, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         if not isinstance(data, list):
-            return []
+            return {}
 
         for user_data in data:
             if isinstance(user_data, dict) and user_data.get('user_id') == str(user_id):
                 processed = user_data.get('processed_cargos')
-                return processed if isinstance(processed, list) else []
+                if isinstance(processed, dict):
+                    return processed
+                # Обратная совместимость: старый формат — список номеров
+                if isinstance(processed, list):
+                    return {ln: {} for ln in processed}
+                return {}
 
-        return []
+        return {}
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"Ошибка загрузки processed для user_id {user_id}: {e}")
-        return []
+        return {}
 
 
-def save_processed(user_id: int, processed_cargos: list):
-    """Сохраняет список обработанных грузов."""
+def save_processed(user_id: int, processed_cargos: dict):
+    """Сохраняет словарь обработанных грузов {loadNumber: {fields...}}."""
     data = []
     if os.path.exists(processed_file):
         try:

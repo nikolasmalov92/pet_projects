@@ -7,6 +7,50 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _extract_cargo_snapshot(load: dict) -> dict:
+    """Извлекает ключевые поля груза для сравнения изменений."""
+    rate_data = load.get('rate', {})
+    price_no_nds = rate_data.get('priceNoNds', '') if rate_data else ''
+    price_nds = rate_data.get('priceNds', '') if rate_data else ''
+    price = rate_data.get('price', '') if rate_data else ''
+    if not price_no_nds and not price_nds:
+        price_no_nds = price
+
+    load_info = load.get('load', {})
+
+    return {
+        'price_no_nds': str(price_no_nds),
+        'price_nds': str(price_nds),
+        'weight': str(load_info.get('weight', '')),
+        'volume': str(load_info.get('volume', '')),
+        'note': str(load.get('note', '')),
+        'change_date': str(load.get('changeDate', '')),
+    }
+
+
+def _diff_snapshots(old: dict, new: dict) -> list[str]:
+    """Сравнивает два снимка груза и возвращает список изменений."""
+    changes = []
+    if not old:
+        return changes
+
+    labels = {
+        'price_no_nds': 'Ставка (без НДС)',
+        'price_nds': 'Ставка (с НДС)',
+        'weight': 'Вес',
+        'volume': 'Объём',
+        'note': 'Примечание',
+    }
+
+    for key, label in labels.items():
+        old_val = old.get(key, '')
+        new_val = new.get(key, '')
+        if old_val != new_val and (old_val or new_val):
+            changes.append(f"{label}: {old_val or '—'} → {new_val or '—'}")
+
+    return changes
+
+
 def parsing_data(data, user_id):
     """
     Парсит данные о грузах и возвращает список с ID и текстом сообщения.
@@ -30,29 +74,15 @@ def parsing_data(data, user_id):
     if not loads:
         return items
 
-    processed_list = load_processed(user_id)
-    if processed_list is None:
-        processed_list = []
-    elif not isinstance(processed_list, list):
-        processed_list = []
-
-    today_utc = datetime.now(timezone.utc).date()
+    processed = load_processed(user_id)
+    if not isinstance(processed, dict):
+        processed = {}
 
     for load in loads:
         try:
             load_num = load.get('loadNumber', '')
-            if not load_num or load_num in processed_list:
+            if not load_num:
                 continue
-
-            # Пропускаем грузы, которые не были созданы сегодня (обновления старых заявок)
-            add_date_str = load.get('addDate', '')
-            if add_date_str:
-                try:
-                    add_date = datetime.fromisoformat(add_date_str.replace('Z', '+00:00')).date()
-                    if add_date != today_utc:
-                        continue
-                except (ValueError, AttributeError):
-                    pass
 
             direction = format_direction(load)
             transport = format_transport(load)
@@ -73,27 +103,56 @@ def parsing_data(data, user_id):
             no_nds = rate_no_nds if rate_no_nds else 'Нет данных'
             nds = rate_nds if rate_nds else 'Нет данных'
             sizes = get_sizes(load) or ''
-            msg = (
-                f"🆕 <b>Новый груз #{load_num}</b>\n"
-                f"<b>Дата:</b> {dateAdd}\n"
-                f"<b>Направление:</b> {direction}\n"
-                f"<b>Транспорт:</b> {transport}\n"
-                f"<b>Тип загрузки:</b> {loading_types if loading_types else ''}\n"
-                f"<b>Вес/Объём/Груз:</b> {weight_volume}\n"
-                f"<b>Габариты (ДxШxВ,м):</b> {sizes}\n"
-                f"<b>Расстояние:</b> {route}\n"
-                f"<b>Ставка:</b> {nds if nds else ''} | {no_nds if no_nds else ''}\n"
-                f"<b>Ставка за км:</b> {km_nds if km_nds else ''} руб. | {km_no_nds if km_no_nds else ''} руб.\n"
-                f"{'<b>Примечание:</b> ' + note if note else ''}\n"
-                f"{'<b>Компания:</b> ' + firm if firm else ''}"
-            )
+
+            snapshot = _extract_cargo_snapshot(load)
+            old_snapshot = processed.get(load_num)
+
+            if load_num in processed:
+                # Груз уже видели — проверяем изменения
+                changes = _diff_snapshots(old_snapshot, snapshot)
+                if not changes:
+                    continue  # Нет изменений — пропускаем
+
+                changes_text = "\n".join(f"  • {c}" for c in changes)
+                msg = (
+                    f"🔄 <b>Обновлённый груз #{load_num}</b>\n"
+                    f"<b>Что изменилось:</b>\n{changes_text}\n\n"
+                    f"<b>Дата:</b> {dateAdd}\n"
+                    f"<b>Направление:</b> {direction}\n"
+                    f"<b>Транспорт:</b> {transport}\n"
+                    f"<b>Тип загрузки:</b> {loading_types if loading_types else ''}\n"
+                    f"<b>Вес/Объём/Груз:</b> {weight_volume}\n"
+                    f"<b>Габариты (ДxШxВ,м):</b> {sizes}\n"
+                    f"<b>Расстояние:</b> {route}\n"
+                    f"<b>Ставка:</b> {nds if nds else ''} | {no_nds if no_nds else ''}\n"
+                    f"<b>Ставка за км:</b> {km_nds if km_nds else ''} руб. | {km_no_nds if km_no_nds else ''} руб.\n"
+                    f"{'<b>Примечание:</b> ' + note if note else ''}\n"
+                    f"{'<b>Компания:</b> ' + firm if firm else ''}"
+                )
+            else:
+                # Новый груз
+                msg = (
+                    f"🆕 <b>Новый груз #{load_num}</b>\n"
+                    f"<b>Дата:</b> {dateAdd}\n"
+                    f"<b>Направление:</b> {direction}\n"
+                    f"<b>Транспорт:</b> {transport}\n"
+                    f"<b>Тип загрузки:</b> {loading_types if loading_types else ''}\n"
+                    f"<b>Вес/Объём/Груз:</b> {weight_volume}\n"
+                    f"<b>Габариты (ДxШxВ,м):</b> {sizes}\n"
+                    f"<b>Расстояние:</b> {route}\n"
+                    f"<b>Ставка:</b> {nds if nds else ''} | {no_nds if no_nds else ''}\n"
+                    f"<b>Ставка за км:</b> {km_nds if km_nds else ''} руб. | {km_no_nds if km_no_nds else ''} руб.\n"
+                    f"{'<b>Примечание:</b> ' + note if note else ''}\n"
+                    f"{'<b>Компания:</b> ' + firm if firm else ''}"
+                )
+
             items.append((load_id, msg))
-            processed_list.append(load_num)
+            processed[load_num] = snapshot
         except Exception as e:
             logger.error(f"Ошибка при парсинге груза {load.get('loadNumber', '?')}: {e}", exc_info=True)
             continue
 
-    save_processed(user_id, processed_list)
+    save_processed(user_id, processed)
     return items
 
 

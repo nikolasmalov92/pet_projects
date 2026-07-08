@@ -105,6 +105,7 @@ async def cancel_action(callback: CallbackQuery, state: FSMContext):
                                    subscription_time_remaining=time_remaining,
                                    is_admin=is_admin)
     )
+    await callback.answer()
     await state.clear()
 
 
@@ -183,6 +184,7 @@ async def inline_stop_search(callback: CallbackQuery, state: FSMContext):
                                    subscription_time_remaining=time_remaining,
                                    is_admin=is_admin)
     )
+    await callback.answer()
 
 
 @router.message(Command("help"))
