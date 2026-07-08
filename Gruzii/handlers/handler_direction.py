@@ -18,7 +18,8 @@ from search_cargo import search_cargo_for_user
 from storage import tasks, active_searches
 from handlers.handler_filter import start_filter_setup
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 router = Router()
 
 
@@ -386,27 +387,40 @@ async def confirm_search_from_add_route(callback: CallbackQuery, state: FSMConte
             # Берем фильтры либо из конкретного маршрута, либо из общих
             route_filters = route.get('filters', {})
 
-            task = asyncio.create_task(search_cargo_for_user(
-                user_id,
-                route['from_location'],
-                route['from_type'],
-                route.get('to_location'),
-                route.get('to_type'),
-                route_filters.get('weight_min', data.get('weight_min')),
-                route_filters.get('weight_max', data.get('weight_max')),
-                callback.message,
-                route_filters.get('volume_from', data.get('volume_from')),
-                route_filters.get('volume_to', data.get('volume_to')),
-                active_searches,
-                route_filters.get('car_load_type_ids', data.get('car_load_type_ids', [])),
-                route_filters.get('car_type_ids', data.get('car_type_ids', [])),
-                from_radius=route.get('from_radius'),
-                to_radius=route.get('to_radius'),
-                any_direction=route.get('any_direction', False)
-            ))
+            # Захватываем значения для замыкания
+            current_route = dict(route)
+            current_filters = dict(route_filters)
+
+            async def _run_search(r=current_route, rf=current_filters):
+                """Обертка для перехвата исключений из задачи поиска."""
+                try:
+                    await search_cargo_for_user(
+                        user_id,
+                        r['from_location'],
+                        r['from_type'],
+                        r.get('to_location'),
+                        r.get('to_type'),
+                        rf.get('weight_min', data.get('weight_min')),
+                        rf.get('weight_max', data.get('weight_max')),
+                        callback.message,
+                        rf.get('volume_from', data.get('volume_from')),
+                        rf.get('volume_to', data.get('volume_to')),
+                        active_searches,
+                        rf.get('car_load_type_ids', data.get('car_load_type_ids', [])),
+                        rf.get('car_type_ids', data.get('car_type_ids', [])),
+                        from_radius=r.get('from_radius'),
+                        to_radius=r.get('to_radius'),
+                        any_direction=r.get('any_direction', False),
+                    )
+                except asyncio.CancelledError:
+                    logger.info(f"Поиск для пользователя {user_id} отменен")
+                except Exception as e:
+                    logger.error(f"Ошибка в задаче поиска для пользователя {user_id}: {e}", exc_info=True)
+
+            task = asyncio.create_task(_run_search())
             tasks[user_id] = task
         except Exception as e:
-            logging.info(f"Ошибка: {e}")
+            logger.error(f"Ошибка при создании задачи поиска: {e}", exc_info=True)
 
 
 # Обработчик кнопки "Фильтр" - показываем список маршрутов

@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Router
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
@@ -5,6 +7,8 @@ from aiogram.types import CallbackQuery
 
 from menu import (get_filter_setup_keyboard, get_car_load_type_keyboard)
 from states import CarLoadTypeStates, FilterStates
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -39,7 +43,7 @@ async def process_car_load_type_selection(callback: CallbackQuery, state: FSMCon
             )
 
         except ValueError as e:
-            print(f"Ошибка обработки типа загрузки: {e}")
+            logger.error(f"Ошибка обработки типа загрузки: {e}")
             await callback.answer("❌ Ошибка выбора типа")
 
     elif callback.data == "apply_load_type_selection":

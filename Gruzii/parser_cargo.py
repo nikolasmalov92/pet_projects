@@ -3,7 +3,7 @@ import re
 from storage import *
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def parsing_data(data, user_id):
@@ -23,7 +23,7 @@ def parsing_data(data, user_id):
     elif isinstance(data, list):
         loads = data
     else:
-        logging.error(f"Неожиданный тип данных в parsing_data: {type(data)}")
+        logger.error(f"Неожиданный тип данных в parsing_data: {type(data)}")
         return items
 
     if not loads:
@@ -36,45 +36,49 @@ def parsing_data(data, user_id):
         processed_list = []
 
     for load in loads:
-        load_num = load.get('loadNumber', '')
-        if not load_num or load_num in processed_list:
+        try:
+            load_num = load.get('loadNumber', '')
+            if not load_num or load_num in processed_list:
+                continue
+
+            direction = format_direction(load)
+            transport = format_transport(load)
+            weight_volume = format_weight_volume(load)
+            route = format_route(load)
+            rate_no_nds, rate_nds = format_rates(load)
+
+            note = get_note(load)
+            firm = get_firm(load)
+            dateAdd = get_date_add(load)
+            load_id = get_load_id(load)
+            loading_types = get_loading_types(load)
+            per_km_nds, per_km_no_nds = calculate_rate_per_km(route, rate_no_nds, rate_nds)
+
+            km_nds = 'Нет данных ' if per_km_nds == 0 else per_km_nds
+            km_no_nds = 'Нет данных ' if per_km_no_nds == 0 else per_km_no_nds
+
+            no_nds = rate_no_nds if rate_no_nds else 'Нет данных'
+            nds = rate_nds if rate_nds else 'Нет данных'
+            sizes = get_sizes(load) or ''
+            msg = (
+                f"🆕 <b>Новый груз #{load_num}</b>\n"
+                f"<b>Дата:</b> {dateAdd}\n"
+                f"<b>Направление:</b> {direction}\n"
+                f"<b>Транспорт:</b> {transport}\n"
+                f"<b>Тип загрузки:</b> {loading_types if loading_types else ''}\n"
+                f"<b>Вес/Объём/Груз:</b> {weight_volume}\n"
+                f"<b>Габариты (ДxШxВ,м):</b> {sizes}\n"
+                f"<b>Расстояние:</b> {route}\n"
+                f"<b>Ставка:</b> {nds if nds else ''} | {no_nds if no_nds else ''}\n"
+                f"<b>Ставка за км:</b> {km_nds if km_nds else ''} руб. | {km_no_nds if km_no_nds else ''} руб.\n"
+                f"{'<b>Примечание:</b> ' + note if note else ''}\n"
+                f"{'<b>Компания:</b> ' + firm if firm else ''}"
+            )
+            items.append((load_id, msg))
+            processed_list.append(load_num)
+        except Exception as e:
+            logger.error(f"Ошибка при парсинге груза {load.get('loadNumber', '?')}: {e}", exc_info=True)
             continue
-
-        direction = format_direction(load)
-        transport = format_transport(load)
-        weight_volume = format_weight_volume(load)
-        route = format_route(load)
-        rate_no_nds, rate_nds = format_rates(load)
-
-        note = get_note(load)
-        firm = get_firm(load)
-        dateAdd = get_date_add(load)
-        load_id = get_load_id(load)
-        loading_types = get_loading_types(load)
-        per_km_nds, per_km_no_nds = calculate_rate_per_km(route, rate_no_nds, rate_nds)
-
-        km_nds = 'Нет данных ' if per_km_nds == 0 else per_km_nds
-        km_no_nds = 'Нет данных ' if per_km_no_nds == 0 else per_km_no_nds
-
-        no_nds = rate_no_nds if rate_no_nds else 'Нет данных'
-        nds = rate_nds if rate_nds else 'Нет данных'
-        sizes = get_sizes(load) or ''
-        msg = (
-            f"🆕 <b>Новый груз #{load_num}</b>\n"
-            f"<b>Дата:</b> {dateAdd}\n"
-            f"<b>Направление:</b> {direction}\n"
-            f"<b>Транспорт:</b> {transport}\n"
-            f"<b>Тип загрузки:</b> {loading_types if loading_types else ''}\n"
-            f"<b>Вес/Объём/Груз:</b> {weight_volume}\n"
-            f"<b>Габариты (ДxШxВ,м):</b> {sizes}\n"
-            f"<b>Расстояние:</b> {route}\n"
-            f"<b>Ставка:</b> {nds if nds else ''} | {no_nds if no_nds else ''}\n"
-            f"<b>Ставка за км:</b> {km_nds if km_nds else ''} руб. | {km_no_nds if km_no_nds else ''} руб.\n"
-            f"{'<b>Примечание:</b> ' + note if note else ''}\n"
-            f"{'<b>Компания:</b> ' + firm if firm else ''}"
-        )
-        items.append((load_id, msg))
-        processed_list.append(load_num)
 
     save_processed(user_id, processed_list)
     return items
@@ -186,6 +190,9 @@ def format_rates(load):
     if price:
         return f"{price} руб.", ""
 
+    # Возвращаем пустые строки, если нет данных о ставках
+    return "", ""
+
 
 def get_note(load):
     """Получает примечание к грузу"""
@@ -205,7 +212,10 @@ def get_date_add(load):
         return formatted_date(change_date)
 
     add_date = load.get('addDate', '')
-    return formatted_date(add_date)
+    if add_date:
+        return formatted_date(add_date)
+
+    return "Нет данных"
 
 
 def get_load_id(load):
@@ -270,23 +280,27 @@ def extract_number(value) -> float:
 
 
 def get_sizes(load):
-    """Форматирует габариты """
-    loading = load.get('loading', {})
-    loading_cargos = loading.get('loadingCargos', [])
-    if loading_cargos and len(loading_cargos) > 0:
+    """Форматирует габариты"""
+    try:
+        loading = load.get('loading', {})
+        loading_cargos = loading.get('loadingCargos', [])
+        if not loading_cargos or len(loading_cargos) == 0:
+            return None
+
         first_load = loading_cargos[0]
         sizes = first_load.get('sizes', {})
-    else:
-        return
 
-    length = sizes.get('length', '')
-    width = sizes.get('width', '')
-    height = sizes.get('height', '')
-    diameter = sizes.get('diameter', '')
+        length = sizes.get('length', '')
+        width = sizes.get('width', '')
+        height = sizes.get('height', '')
 
-    if length or width or height:
-        len_str = f"{float(length):.2f}" if length else ''
-        width_str = f"{float(width):.2f}" if width else ''
-        height_str = f"{float(height):.2f}" if height else ''
+        if length or width or height:
+            len_str = f"{float(length):.2f}" if length else ''
+            width_str = f"{float(width):.2f}" if width else ''
+            height_str = f"{float(height):.2f}" if height else ''
 
-        return f"{len_str}×{width_str}×{height_str}"
+            return f"{len_str}×{width_str}×{height_str}"
+    except (ValueError, TypeError, IndexError) as e:
+        logger.warning(f"Ошибка при форматировании габаритов: {e}")
+
+    return None

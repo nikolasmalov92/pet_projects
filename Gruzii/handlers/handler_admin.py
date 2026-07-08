@@ -13,7 +13,7 @@ from menu import admin_panel_keyboard, remove_user_keyboard, disabling_subscript
 
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = Router()
 

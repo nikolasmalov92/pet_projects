@@ -12,7 +12,7 @@ from subscription import subscription_manager
 
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = Router()
 

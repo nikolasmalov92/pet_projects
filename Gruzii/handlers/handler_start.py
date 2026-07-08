@@ -14,7 +14,7 @@ from storage import tasks, active_searches
 
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -42,7 +42,7 @@ async def cmd_start(message: Message, state: FSMContext):
     await asyncio.to_thread(save_user, user_id)
 
     allowed_users = await asyncio.to_thread(load_users)
-    await asyncio.create_task(asyncio.to_thread(delete_processed))
+    asyncio.create_task(asyncio.to_thread(delete_processed))
 
     if user_id in allowed_users or user_id == ADMIN_USER_ID:
         first_name = message.from_user.first_name or "Пользователь"
@@ -83,8 +83,8 @@ async def cmd_start(message: Message, state: FSMContext):
 async def cancel_action(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     active_searches[user_id] = False
-    task = tasks.get(user_id)
-    if task:
+    task = tasks.pop(user_id, None)
+    if task and not task.done():
         task.cancel()
 
     # Проверяем подписку
@@ -112,8 +112,8 @@ async def cancel_action(callback: CallbackQuery, state: FSMContext):
 async def stop_search(message: Message, state: FSMContext):
     user_id = message.from_user.id
     active_searches[user_id] = False
-    task = tasks.get(user_id)
-    if task:
+    task = tasks.pop(user_id, None)
+    if task and not task.done():
         task.cancel()
 
     # Проверяем подписку
@@ -161,8 +161,8 @@ async def back_to_main(message: Message, state: FSMContext):
 async def inline_stop_search(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     active_searches[user_id] = False
-    task = tasks.get(user_id)
-    if task:
+    task = tasks.pop(user_id, None)
+    if task and not task.done():
         task.cancel()
 
     # Проверяем подписку

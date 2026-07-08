@@ -4,6 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiohttp import ClientTimeout
 
 from handlers.handler_admin import router as admin_router
 from handlers.handler_start import router as handler_start
@@ -19,9 +20,13 @@ from subscription import subscription_manager
 from config import telegram_token
 from storage import init_db, get_car_loading_types, get_car_types
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger(__name__)
 
-logging.basicConfig(level=logging.INFO)
-
+# Инициализация БД и кэшей
 init_db()
 get_car_loading_types()
 get_car_types()
@@ -29,6 +34,7 @@ get_car_types()
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
+# Регистрация роутеров
 dp.include_router(handler_start)
 dp.include_router(subscription_router)
 dp.include_router(admin_router)
@@ -41,13 +47,19 @@ dp.include_router(type_car_router)
 
 
 async def main():
-    logging.info("🚀 Запуск бота")
-    session = AiohttpSession(timeout=200)
+    logger.info("Запуск бота")
+
+    # Увеличенный таймаут для стабильности при проблемах с сетью
+    session = AiohttpSession(timeout=ClientTimeout(total=180, connect=30))
     bot = Bot(token=telegram_token, session=session)
 
-    expired_count = subscription_manager.cleanup_expired()
-    if expired_count > 0:
-        logging.info(f"🧹 Деактивировано {expired_count} истекших подписок")
+    # Очистка истекших подписок при старте
+    try:
+        expired_count = subscription_manager.cleanup_expired()
+        if expired_count > 0:
+            logger.info(f"Деактивировано {expired_count} истекших подписок")
+    except Exception as e:
+        logger.error(f"Ошибка при очистке подписок: {e}")
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, polling_timeout=60)
@@ -57,4 +69,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("⛔ Бот остановлен пользователем")
+        logger.info("Бот остановлен пользователем")
+    except Exception as e:
+        logger.critical(f"Критическая ошибка при запуске бота: {e}", exc_info=True)
