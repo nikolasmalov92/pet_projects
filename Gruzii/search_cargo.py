@@ -6,7 +6,8 @@ from aiogram.exceptions import TelegramRetryAfter, TelegramNetworkError, Telegra
 
 from ati_client import AtiClient
 from parser_cargo import parsing_data
-from menu import menu_details, get_search_controls
+from menu import menu_details
+from storage import search_paused
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,13 @@ async def _search_loop(
 ):
     while active_searches.get(user_id, False):
         try:
+            # Пауза при открытии меню — ждём пока пользователь не закроет
+            while search_paused.get(user_id, False) and active_searches.get(user_id, False):
+                await asyncio.sleep(1)
+
+            if not active_searches.get(user_id, False):
+                break
+
             # Получаем ID городов с retry логикой
             from_id = await ati_client.get_city_id_async(from_name, from_type)
 
@@ -126,6 +134,12 @@ async def _search_loop(
                 break
 
             search_count += 1
+
+            # Пауза перед API-запросом
+            while search_paused.get(user_id, False) and active_searches.get(user_id, False):
+                await asyncio.sleep(1)
+            if not active_searches.get(user_id, False):
+                break
 
             # Получаем грузы с retry логикой
             cargo_data = await ati_client.get_cargo_async(
@@ -163,6 +177,11 @@ async def _search_loop(
                 found_count += len(unique_msgs)
                 send_failed = False
                 for load_id, msg_text in unique_msgs:
+                    if not active_searches.get(user_id, False):
+                        break
+                    # Пауза — ждём перед отправкой каждого сообщения
+                    while search_paused.get(user_id, False) and active_searches.get(user_id, False):
+                        await asyncio.sleep(1)
                     if not active_searches.get(user_id, False):
                         break
                     last_sent_loads.add(load_id)
@@ -207,9 +226,13 @@ async def _search_loop(
                         message,
                         "⚠️ <b>Множественные ошибки</b>\n\n"
                         f"Повторная попытка через {LONG_ERROR_PAUSE // 60} минут...",
-                        reply_markup=get_search_controls(),
                     )
-                await asyncio.sleep(LONG_ERROR_PAUSE)
+                for _ in range(LONG_ERROR_PAUSE):
+                    if not active_searches.get(user_id, False):
+                        break
+                    while search_paused.get(user_id, False) and active_searches.get(user_id, False):
+                        await asyncio.sleep(1)
+                    await asyncio.sleep(1)
                 consecutive_errors = 0  # Сброс после длинной паузы
             else:
                 if active_searches.get(user_id, False):
@@ -217,13 +240,22 @@ async def _search_loop(
                         message,
                         "⚠️ <b>Временная ошибка поиска</b>\n\n"
                         "Повторная попытка через 1 минуту...",
-                        reply_markup=get_search_controls(),
                     )
-                await asyncio.sleep(60)
+                for _ in range(60):
+                    if not active_searches.get(user_id, False):
+                        break
+                    while search_paused.get(user_id, False) and active_searches.get(user_id, False):
+                        await asyncio.sleep(1)
+                    await asyncio.sleep(1)
             continue
 
         # Сброс счетчика ошибок при успешной итерации
         consecutive_errors = 0
 
-        # Пауза между циклами поиска
-        await asyncio.sleep(3 * 60)
+        # Пауза между циклами поиска (с проверкой паузы каждую секунду)
+        for _ in range(3 * 60):
+            if not active_searches.get(user_id, False):
+                break
+            while search_paused.get(user_id, False) and active_searches.get(user_id, False):
+                await asyncio.sleep(1)
+            await asyncio.sleep(1)

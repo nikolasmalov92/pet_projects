@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from aiogram import F
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
@@ -8,8 +11,10 @@ from states import (FilterStates, WeightStates, VolumeStates,
                     CarLoadTypeStates, CarTypeStates, SearchStates)
 from menu import (get_filter_setup_keyboard, get_car_load_type_keyboard,
                   get_weight_range_keyboard, get_volume_range_keyboard,
-                  get_add_route_keyboard, get_car_type_keyboard, get_car_types)
-from storage import get_car_loading_types
+                  get_add_route_keyboard, get_car_type_keyboard, get_car_types,
+                  get_active_search_keyboard, get_search_controls)
+from storage import get_car_loading_types, update_filter_preset, get_preset_by_id, tasks, active_searches
+from search_cargo import search_cargo_for_user
 
 router = Router()
 
@@ -104,6 +109,98 @@ async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
 
     elif callback.data == "finish_filters":
         data = await state.get_data()
+
+        # Редактирование фильтров активного направления
+        editing_preset_id = data.get('editing_preset_id')
+        editing_task_key = data.get('editing_task_key')
+        if editing_preset_id and editing_task_key:
+            user_id = callback.from_user.id
+            preset = get_preset_by_id(editing_preset_id, user_id)
+
+            if preset:
+                # Обновляем фильтры в пресете (передаём полные данные)
+                updated_data = {
+                    'from_location': preset['from_location'],
+                    'from_type': preset['from_type'],
+                    'from_type_name': preset.get('from_type_name', ''),
+                    'from_radius': preset.get('from_radius'),
+                    'to_location': preset.get('to_location'),
+                    'to_type': preset.get('to_type'),
+                    'to_type_name': preset.get('to_type_name', ''),
+                    'to_radius': preset.get('to_radius'),
+                    'any_direction': preset.get('any_direction', False),
+                    'weight_min': data.get('weight_min'),
+                    'weight_max': data.get('weight_max'),
+                    'volume_from': data.get('volume_from'),
+                    'volume_to': data.get('volume_to'),
+                    'car_load_type_ids': data.get('car_load_type_ids', []),
+                    'car_type_ids': data.get('car_type_ids', []),
+                }
+                update_filter_preset(editing_preset_id, user_id, updated_data)
+
+                # Обновлённый пресет
+                preset = get_preset_by_id(editing_preset_id, user_id)
+
+                # Запускаем поиск по обновлённому пресету
+                user_tasks = tasks.get(user_id, {})
+                tasks[user_id] = user_tasks
+
+                async def _run_search():
+                    try:
+                        await search_cargo_for_user(
+                            user_id,
+                            preset['from_location'],
+                            preset['from_type'],
+                            preset.get('to_location'),
+                            preset.get('to_type'),
+                            preset.get('weight_min'),
+                            preset.get('weight_max'),
+                            callback.message,
+                            preset.get('volume_from'),
+                            preset.get('volume_to'),
+                            active_searches,
+                            preset.get('car_load_type_ids', []),
+                            preset.get('car_type_ids', []),
+                            from_radius=preset.get('from_radius'),
+                            to_radius=preset.get('to_radius'),
+                            any_direction=preset.get('any_direction', False),
+                        )
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        logging.getLogger(__name__).error(f"Ошибка поиска: {e}", exc_info=True)
+
+                task = asyncio.create_task(_run_search())
+                user_tasks[editing_task_key] = {
+                    'task': task,
+                    'name': preset['name'],
+                    'preset_id': editing_preset_id,
+                }
+
+                active_searches[user_id] = True
+
+                await callback.message.edit_text(
+                    f"✅ <b>Фильтры обновлены!</b>\n\n"
+                    f"📌 {preset['name']}\n"
+                    f"Поиск перезапущен с новыми параметрами.",
+                    parse_mode="HTML"
+                )
+                await callback.message.answer(
+                    reply_markup=get_search_controls()
+                )
+
+            # Очищаем временные данные
+            await state.update_data(
+                editing_preset_id=None,
+                editing_task_key=None,
+                weight_min=None, weight_max=None,
+                volume_from=None, volume_to=None,
+                car_load_type_ids=[], car_type_ids=[],
+            )
+            await state.set_state(SearchStates.searching)
+            await callback.answer()
+            return
+
         route_index = data.get('filtering_route_index')
         if route_index is not None:
             # Сохраняем фильтры в маршрут
@@ -165,7 +262,7 @@ async def show_search_confirmation(message: Message, state: FSMContext):
     data = await state.get_data()
     from_radius = data.get('from_radius')
     from_radius_str = f", радиус {from_radius} км" if from_radius else ""
-    from_line = f"📍 <b>Откуда:</b> {data['from_type_name']} {data['from_location']} {from_radius_str}\n"
+    from_line = f"📍 <b>Откуда:</b> {data.get('from_type_name', '—')} {data.get('from_location', '—')} {from_radius_str}\n"
 
     any_direction = data.get('any_direction', False)
     if any_direction:

@@ -11,12 +11,11 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from config import ADMIN_USER_ID
 from menu import (get_main_menu, get_type_keyboard, get_radius_keyboard,
                          get_to_type_keyboard, get_add_route_keyboard, get_search_controls,
-                         get_preset_save_keyboard)
-from states import SearchStates
-from storage import get_type_id
+                         get_preset_save_keyboard, get_multi_select_presets_keyboard)
+from states import SearchStates, PresetStates
+from storage import get_type_id, get_user_presets, tasks, active_searches
 from subscription import subscription_manager
 from search_cargo import search_cargo_for_user
-from storage import tasks, active_searches
 from handlers.handler_filter import start_filter_setup
 
 logger = logging.getLogger(__name__)
@@ -180,7 +179,7 @@ async def start_search(message: Message, state: FSMContext):
     user_id = message.from_user.id
     is_admin = (user_id == ADMIN_USER_ID)
     await state.clear()
-    await state.set_state(SearchStates.setting_from_type)
+
     # Проверяем подписку
     if not is_admin and not subscription_manager.is_subscription_active(user_id):
         await message.answer(
@@ -192,6 +191,28 @@ async def start_search(message: Message, state: FSMContext):
         )
         return
 
+    # Проверяем наличие сохранённых фильтров
+    presets = get_user_presets(user_id)
+    if presets:
+        # По умолчанию все пресеты выбраны
+        all_ids = [p['id'] for p in presets]
+        await state.update_data(selected_preset_ids=all_ids)
+        keyboard = get_multi_select_presets_keyboard(presets, set(all_ids))
+        # Добавляем кнопку "Новый поиск" в конец
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(text="🆕 Новый поиск", callback_data="new_search")
+        ])
+        await message.answer(
+            "🎯 <b>Настройка поиска грузов</b>\n\n"
+            "У вас есть сохранённые фильтры. Выберите или создайте новый:",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+        await state.set_state(PresetStates.selecting_preset)
+        return
+
+    # Нет сохранённых фильтров — сразу на настройку
+    await state.set_state(SearchStates.setting_from_type)
     await message.answer(
         "🎯 <b>Настройка поиска грузов</b>\n\n"
         "📍 <b>Шаг 1 из 4:</b> Откуда отправляем груз?\n"
@@ -199,6 +220,21 @@ async def start_search(message: Message, state: FSMContext):
         parse_mode="HTML",
         reply_markup=get_type_keyboard()
     )
+
+
+@router.callback_query(F.data == "new_search", StateFilter(PresetStates.selecting_preset))
+async def new_search_from_presets(callback: CallbackQuery, state: FSMContext):
+    """Пользователь выбрал 'Новый поиск' вместо сохранённого фильтра."""
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        "🎯 <b>Настройка поиска грузов</b>\n\n"
+        "📍 <b>Шаг 1 из 4:</b> Откуда отправляем груз?\n"
+        "Выберите тип географической точки:",
+        parse_mode="HTML",
+        reply_markup=get_type_keyboard()
+    )
+    await state.set_state(SearchStates.setting_from_type)
+    await callback.answer()
 
 
 @router.message(StateFilter(SearchStates.setting_from_type))
@@ -395,7 +431,10 @@ async def start_search_now(callback: CallbackQuery, state: FSMContext):
         'to_type': data.get('to_type'),
     }]
 
-    for route in search_routes:
+    user_tasks = tasks.get(user_id, {})
+    tasks[user_id] = user_tasks
+
+    for i, route in enumerate(search_routes):
         try:
             # Берем фильтры либо из конкретного маршрута, либо из общих
             route_filters = route.get('filters', {})
@@ -403,8 +442,12 @@ async def start_search_now(callback: CallbackQuery, state: FSMContext):
             # Захватываем значения для замыкания
             current_route = dict(route)
             current_filters = dict(route_filters)
+            from_loc = current_route.get('from_location', '?')
+            to_loc = current_route.get('to_location')
+            route_name = f"{from_loc} → {to_loc or 'Любое'}"
+            route_key = f"route_{i}_{from_loc}"
 
-            async def _run_search(r=current_route, rf=current_filters):
+            async def _run_search(r=current_route, rf=current_filters, rk=route_key):
                 """Обертка для перехвата исключений из задачи поиска."""
                 try:
                     await search_cargo_for_user(
@@ -431,7 +474,11 @@ async def start_search_now(callback: CallbackQuery, state: FSMContext):
                     logger.error(f"Ошибка в задаче поиска для пользователя {user_id}: {e}", exc_info=True)
 
             task = asyncio.create_task(_run_search())
-            tasks[user_id] = task
+            user_tasks[route_key] = {
+                'task': task,
+                'name': route_name,
+                'preset_id': None,
+            }
         except Exception as e:
             logger.error(f"Ошибка при создании задачи поиска: {e}", exc_info=True)
 

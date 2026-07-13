@@ -67,7 +67,8 @@ def menu_details(load_id):
 def get_search_controls():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="⛔ Остановить")]
+            [KeyboardButton(text="📊 Направления")],
+            [KeyboardButton(text="➕ Добавить"), KeyboardButton(text="⛔ Остановить")],
         ],
         resize_keyboard=True,
         one_time_keyboard=False
@@ -225,24 +226,6 @@ def remove_user_keyboard(target_user_id):
     ])
 
 
-def get_presets_keyboard(presets: list):
-    """Клавиатура со списком пресетов пользователя."""
-    keyboard = []
-    for preset in presets:
-        keyboard.append([
-            InlineKeyboardButton(
-                text=f"📌 {preset['name']}",
-                callback_data=f"use_preset_{preset['id']}"
-            ),
-            InlineKeyboardButton(
-                text="🗑",
-                callback_data=f"del_preset_{preset['id']}"
-            ),
-        ])
-    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_presets")])
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-
 def get_preset_actions_keyboard(preset_id: int):
     """Клавиатура действий с пресетом."""
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -252,6 +235,76 @@ def get_preset_actions_keyboard(preset_id: int):
             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_preset_{preset_id}"),
         ],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_presets")]
+    ])
+
+
+def get_multi_select_presets_keyboard(presets: list, selected_ids: set):
+    """Клавиатура мультивыбора пресетов с чекбоксами."""
+    keyboard = []
+    for preset in presets:
+        is_selected = preset['id'] in selected_ids
+        emoji = "✅" if is_selected else "⬜"
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{emoji} {preset['name']}",
+                callback_data=f"toggle_preset_{preset['id']}"
+            ),
+            InlineKeyboardButton(
+                text="⚙️",
+                callback_data=f"edit_single_preset_{preset['id']}"
+            ),
+        ])
+    keyboard.append([
+        InlineKeyboardButton(
+            text="☑️ Выбрать все" if len(selected_ids) < len(presets) else "🔲 Снять все",
+            callback_data="toggle_all_presets"
+        ),
+    ])
+    if selected_ids:
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"🔍 Искать ({len(selected_ids)})",
+                callback_data="start_multi_preset_search"
+            ),
+        ])
+    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_presets")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_active_search_keyboard(active_tasks: dict):
+    """Клавиатура управления активными направлениями во время поиска."""
+    keyboard = []
+    for task_key, task_info in active_tasks.items():
+        if task_info.get('task') and not task_info['task'].done():
+            name = task_info.get('name', task_key)
+            keyboard.append([
+                InlineKeyboardButton(
+                    text=f"🟢 {name}",
+                    callback_data=f"view_direction_{task_key}"
+                ),
+            ])
+    keyboard.append([
+        InlineKeyboardButton(text="➕ Добавить направление", callback_data="add_direction_during_search"),
+        InlineKeyboardButton(text="⛔ Остановить все", callback_data="stop_all_directions"),
+    ])
+    keyboard.append([
+        InlineKeyboardButton(text="▶️ Продолжить поиск", callback_data="resume_search"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def get_direction_actions_keyboard(task_key: str):
+    """Клавиатура действий с конкретным направлением во время поиска."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⛔ Остановить", callback_data=f"stop_direction_{task_key}"),
+            InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_direction_{task_key}"),
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_direction_{task_key}"),
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад к направлениям", callback_data="back_to_active_directions"),
+            InlineKeyboardButton(text="▶️ Продолжить", callback_data="resume_search"),
+        ]
     ])
 
 

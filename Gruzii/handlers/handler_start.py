@@ -6,11 +6,14 @@ from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram import F
 
-from storage import save_user, load_users, delete_processed
+from storage import (
+    save_user, load_users, delete_processed, get_user_presets,
+    tasks, active_searches, search_paused,
+)
 from config import ADMIN_USER_ID
 from subscription import subscription_manager
-from menu import get_main_menu
-from storage import tasks, active_searches
+from menu import get_main_menu, get_active_search_keyboard, get_multi_select_presets_keyboard
+from states import PresetStates
 
 import logging
 
@@ -83,9 +86,10 @@ async def cmd_start(message: Message, state: FSMContext):
 async def cancel_action(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     active_searches[user_id] = False
-    task = tasks.pop(user_id, None)
-    if task and not task.done():
-        task.cancel()
+    user_tasks = tasks.pop(user_id, {})
+    for task_info in user_tasks.values():
+        if task_info.get('task') and not task_info['task'].done():
+            task_info['task'].cancel()
 
     # Проверяем подписку
     has_subscription = subscription_manager.is_subscription_active(user_id)
@@ -113,9 +117,10 @@ async def cancel_action(callback: CallbackQuery, state: FSMContext):
 async def stop_search(message: Message, state: FSMContext):
     user_id = message.from_user.id
     active_searches[user_id] = False
-    task = tasks.pop(user_id, None)
-    if task and not task.done():
-        task.cancel()
+    user_tasks = tasks.pop(user_id, {})
+    for task_info in user_tasks.values():
+        if task_info.get('task') and not task_info['task'].done():
+            task_info['task'].cancel()
 
     # Проверяем подписку
     has_subscription = subscription_manager.is_subscription_active(user_id)
@@ -133,6 +138,68 @@ async def stop_search(message: Message, state: FSMContext):
                                    subscription_time_remaining=time_remaining,
                                    is_admin=is_admin)
     )
+
+
+@router.message(F.text == "📊 Направления")
+async def show_active_directions(message: Message, state: FSMContext):
+    """Показывает inline-клавиатуру с активными направлениями."""
+    user_id = message.from_user.id
+    search_paused[user_id] = True
+    user_tasks = tasks.get(user_id, {})
+
+    if not user_tasks:
+        await message.answer("Нет активных поисков.", parse_mode="HTML")
+        return
+
+    active_count = sum(
+        1 for v in user_tasks.values()
+        if v.get('task') and not v['task'].done()
+    )
+    await message.answer(
+        f"📊 <b>Активные направления ({active_count}):</b>",
+        parse_mode="HTML",
+        reply_markup=get_active_search_keyboard(user_tasks)
+    )
+
+
+@router.message(F.text == "➕ Добавить")
+async def add_direction_from_keyboard(message: Message, state: FSMContext):
+    """Показывает список пресетов для добавления нового направления."""
+    user_id = message.from_user.id
+    search_paused[user_id] = True
+
+    if not tasks.get(user_id):
+        await message.answer("Сначала запустите поиск.", parse_mode="HTML")
+        return
+
+    presets = get_user_presets(user_id)
+    if not presets:
+        await message.answer(
+            "Нет сохранённых фильтров. Сначала создайте хотя бы один.",
+            parse_mode="HTML"
+        )
+        return
+
+    user_tasks = tasks.get(user_id, {})
+    active_preset_ids = {
+        v.get('preset_id') for v in user_tasks.values()
+        if v.get('preset_id')
+    }
+    available = [p for p in presets if p['id'] not in active_preset_ids]
+
+    if not available:
+        await message.answer("Все направления уже активны!", parse_mode="HTML")
+        return
+
+    available_ids = [p['id'] for p in available]
+    await state.update_data(selected_preset_ids=available_ids)
+    await message.answer(
+        "➕ <b>Добавить направление в поиск:</b>\n\n"
+        "Выберите фильтр из сохранённых:",
+        parse_mode="HTML",
+        reply_markup=get_multi_select_presets_keyboard(available, set(available_ids))
+    )
+    await state.set_state(PresetStates.selecting_preset)
 
 
 @router.message(F.text == "🔙 Главное меню")
@@ -162,9 +229,10 @@ async def back_to_main(message: Message, state: FSMContext):
 async def inline_stop_search(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     active_searches[user_id] = False
-    task = tasks.pop(user_id, None)
-    if task and not task.done():
-        task.cancel()
+    user_tasks = tasks.pop(user_id, {})
+    for task_info in user_tasks.values():
+        if task_info.get('task') and not task_info['task'].done():
+            task_info['task'].cancel()
 
     # Проверяем подписку
     has_subscription = subscription_manager.is_subscription_active(user_id)

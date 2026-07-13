@@ -12,8 +12,9 @@ from config import geo_types, DB_NAME, processed_file, api_car_types, api_loadin
 logger = logging.getLogger(__name__)
 
 # Глобальное состояние
-tasks: Dict[int, asyncio.Task] = {}
+tasks: Dict[int, dict] = {}          # user_id -> {task_key: asyncio.Task, ...}
 active_searches: Dict[int, bool] = {}
+search_paused: Dict[int, bool] = {}  # пауза при открытии меню
 
 # Кэши
 _car_loading_types_cache: Optional[list] = None
