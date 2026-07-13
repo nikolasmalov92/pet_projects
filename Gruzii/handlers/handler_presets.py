@@ -363,6 +363,7 @@ async def delete_direction(callback: CallbackQuery, state: FSMContext):
     if not user_tasks:
         tasks.pop(user_id, None)
         active_searches[user_id] = False
+        search_paused[user_id] = False
 
         has_subscription = subscription_manager.is_subscription_active(user_id)
         time_remaining = None
@@ -388,10 +389,7 @@ async def delete_direction(callback: CallbackQuery, state: FSMContext):
             if v.get('task') and not v['task'].done()
         )
         await callback.message.edit_text(
-            f"🗑 <b>{name}</b> удалено.",
-            parse_mode="HTML"
-        )
-        await callback.message.answer(
+            f"🗑 <b>{name}</b> удалено.\n\n"
             f"📊 <b>Активные направления ({active_count}):</b>",
             parse_mode="HTML",
             reply_markup=get_active_search_keyboard(user_tasks)
@@ -419,6 +417,7 @@ async def stop_direction(callback: CallbackQuery, state: FSMContext):
         # Все направления остановлены
         tasks.pop(user_id, None)
         active_searches[user_id] = False
+        search_paused[user_id] = False
 
         has_subscription = subscription_manager.is_subscription_active(user_id)
         time_remaining = None
@@ -450,6 +449,7 @@ async def stop_direction(callback: CallbackQuery, state: FSMContext):
 async def stop_all_directions(callback: CallbackQuery, state: FSMContext):
     """Останавливает все направления поиска."""
     user_id = callback.from_user.id
+    search_paused[user_id] = False
     active_searches[user_id] = False
     user_tasks = tasks.pop(user_id, {})
 

@@ -13,7 +13,7 @@ from menu import (get_filter_setup_keyboard, get_car_load_type_keyboard,
                   get_weight_range_keyboard, get_volume_range_keyboard,
                   get_add_route_keyboard, get_car_type_keyboard, get_car_types,
                   get_active_search_keyboard, get_search_controls)
-from storage import get_car_loading_types, update_filter_preset, get_preset_by_id, tasks, active_searches
+from storage import get_car_loading_types, update_filter_preset, get_preset_by_id, tasks, active_searches, search_paused
 from search_cargo import search_cargo_for_user
 
 router = Router()
@@ -178,6 +178,7 @@ async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
                 }
 
                 active_searches[user_id] = True
+                search_paused[user_id] = False
 
                 await callback.message.edit_text(
                     f"✅ <b>Фильтры обновлены!</b>\n\n"
@@ -186,6 +187,7 @@ async def process_filter_selection(callback: CallbackQuery, state: FSMContext):
                     parse_mode="HTML"
                 )
                 await callback.message.answer(
+                    "▶️ Поиск продолжается...",
                     reply_markup=get_search_controls()
                 )
 
