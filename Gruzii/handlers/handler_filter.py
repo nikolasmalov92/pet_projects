@@ -19,7 +19,7 @@ from search_cargo import search_cargo_for_user
 router = Router()
 
 
-@router.callback_query(F.data.startswith("filter_"))
+@router.callback_query(F.data.startswith("filter_") & ~F.data.startswith("filter_route_"))
 async def handle_filter_button(callback: CallbackQuery, state: FSMContext):
     """Обрабатывает нажатие кнопки '⚙️ Фильтр'"""
     await start_filter_setup(callback, state)

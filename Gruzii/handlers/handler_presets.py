@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -26,6 +27,20 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def safe_edit(message, *, text=None, reply_markup=None, parse_mode="HTML"):
+    """Редактирует сообщение; при ошибке — отправляет новое."""
+    try:
+        if text is not None:
+            await message.edit_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+        elif reply_markup is not None:
+            await message.edit_reply_markup(reply_markup=reply_markup)
+    except (TelegramNetworkError, TelegramBadRequest):
+        if text is not None:
+            await message.answer(text, parse_mode=parse_mode, reply_markup=reply_markup)
+        elif reply_markup is not None:
+            await message.answer("Обновлено:", reply_markup=reply_markup)
+
+
 # ── Показать список пресетов ─────────────────────────────────────────
 
 @router.callback_query(F.data == "show_my_presets", StateFilter(SearchStates.adding_route))
@@ -41,11 +56,11 @@ async def show_my_presets(callback: CallbackQuery, state: FSMContext):
     # По умолчанию все пресеты выбраны
     all_ids = [p['id'] for p in presets]
     await state.update_data(selected_preset_ids=all_ids)
-    await callback.message.edit_text(
-        "📂 <b>Ваши сохранённые фильтры:</b>\n\n"
+    await safe_edit(
+        callback.message,
+        text="📂 <b>Ваши сохранённые фильтры:</b>\n\n"
         "Отметьте нужные фильтры и нажмите «Искать»:",
-        parse_mode="HTML",
-        reply_markup=get_multi_select_presets_keyboard(presets, set(all_ids))
+        reply_markup=get_multi_select_presets_keyboard(presets, set(all_ids)),
     )
     await state.set_state(PresetStates.selecting_preset)
     await callback.answer()
@@ -68,8 +83,9 @@ async def toggle_preset_selection(callback: CallbackQuery, state: FSMContext):
     await state.update_data(selected_preset_ids=list(selected))
 
     presets = get_user_presets(callback.from_user.id)
-    await callback.message.edit_reply_markup(
-        reply_markup=get_multi_select_presets_keyboard(presets, selected)
+    await safe_edit(
+        callback.message,
+        reply_markup=get_multi_select_presets_keyboard(presets, selected),
     )
     await callback.answer()
 
@@ -88,8 +104,9 @@ async def toggle_all_presets(callback: CallbackQuery, state: FSMContext):
         selected = preset_ids
 
     await state.update_data(selected_preset_ids=list(selected))
-    await callback.message.edit_reply_markup(
-        reply_markup=get_multi_select_presets_keyboard(presets, selected)
+    await safe_edit(
+        callback.message,
+        reply_markup=get_multi_select_presets_keyboard(presets, selected),
     )
     await callback.answer()
 
@@ -108,10 +125,10 @@ async def edit_single_preset_from_list(callback: CallbackQuery, state: FSMContex
     await state.update_data(selected_preset_id=preset_id)
 
     text = _format_preset_info(preset)
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=get_preset_actions_keyboard(preset_id)
+    await safe_edit(
+        callback.message,
+        text=text,
+        reply_markup=get_preset_actions_keyboard(preset_id),
     )
     await state.set_state(PresetStates.editing_preset)
     await callback.answer()
@@ -152,14 +169,14 @@ async def start_multi_preset_search(callback: CallbackQuery, state: FSMContext):
     routes_text = "\n".join(lines)
 
     if is_adding:
-        await callback.message.edit_text(
-            f"➕ <b>Добавлено {len(presets)} направлений:</b>\n\n{routes_text}",
-            parse_mode="HTML"
+        await safe_edit(
+            callback.message,
+            text=f"➕ <b>Добавлено {len(presets)} направлений:</b>\n\n{routes_text}",
         )
     else:
-        await callback.message.edit_text(
-            f"🚀 <b>Поиск запущен по {len(presets)} направлениям!</b>\n\n{routes_text}",
-            parse_mode="HTML"
+        await safe_edit(
+            callback.message,
+            text=f"🚀 <b>Поиск запущен по {len(presets)} направлениям!</b>\n\n{routes_text}",
         )
         await state.set_state(SearchStates.searching)
 
@@ -247,10 +264,10 @@ async def view_direction(callback: CallbackQuery, state: FSMContext):
         status = "🟢 Активно" if is_active else "🔴 Остановлено"
         text = f"{status}\n\n📌 <b>{name}</b>"
 
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=get_direction_actions_keyboard(task_key)
+    await safe_edit(
+        callback.message,
+        text=text,
+        reply_markup=get_direction_actions_keyboard(task_key),
     )
     await callback.answer()
 
@@ -263,7 +280,7 @@ async def back_to_active_directions(callback: CallbackQuery, state: FSMContext):
     user_tasks = tasks.get(user_id, {})
 
     if not user_tasks:
-        await callback.message.edit_text("Нет активных поисков.", parse_mode="HTML")
+        await safe_edit(callback.message, text="Нет активных поисков.")
         await callback.answer()
         return
 
@@ -271,10 +288,10 @@ async def back_to_active_directions(callback: CallbackQuery, state: FSMContext):
         1 for v in user_tasks.values()
         if v.get('task') and not v['task'].done()
     )
-    await callback.message.edit_text(
-        f"📊 <b>Активные направления ({active_count}):</b>",
-        parse_mode="HTML",
-        reply_markup=get_active_search_keyboard(user_tasks)
+    await safe_edit(
+        callback.message,
+        text=f"📊 <b>Активные направления ({active_count}):</b>",
+        reply_markup=get_active_search_keyboard(user_tasks),
     )
     await callback.answer()
 
@@ -284,7 +301,7 @@ async def resume_search(callback: CallbackQuery, state: FSMContext):
     """Снимает паузу и закрывает inline-клавиатуру."""
     user_id = callback.from_user.id
     search_paused[user_id] = False
-    await callback.message.edit_text("▶️ <b>Поиск продолжен</b>", parse_mode="HTML")
+    await safe_edit(callback.message, text="▶️ <b>Поиск продолжен</b>")
     await callback.answer()
 
 
@@ -332,12 +349,12 @@ async def edit_direction(callback: CallbackQuery, state: FSMContext):
         car_type_ids=preset.get('car_type_ids', []),
     )
 
-    await callback.message.edit_text(
-        f"✏️ <b>Редактирование фильтров</b>\n\n"
+    await safe_edit(
+        callback.message,
+        text=f"✏️ <b>Редактирование фильтров</b>\n\n"
         f"📌 {preset['name']}\n\n"
         f"Выберите параметр для изменения:",
-        parse_mode="HTML",
-        reply_markup=get_filter_setup_keyboard()
+        reply_markup=get_filter_setup_keyboard(),
     )
     await state.set_state(FilterStates.setting_filters)
     await callback.answer()
@@ -371,9 +388,9 @@ async def delete_direction(callback: CallbackQuery, state: FSMContext):
             time_remaining = subscription_manager.get_formatted_time_remaining(user_id)
         is_admin = (user_id == ADMIN_USER_ID)
 
-        await callback.message.edit_text(
-            f"🗑 <b>{name}</b> удалено.\n\nВсе направления остановлены.",
-            parse_mode="HTML"
+        await safe_edit(
+            callback.message,
+            text=f"🗑 <b>{name}</b> удалено.\n\nВсе направления остановлены.",
         )
         await callback.message.answer(
             "🏠 <b>Главное меню</b>",
@@ -388,11 +405,11 @@ async def delete_direction(callback: CallbackQuery, state: FSMContext):
             1 for v in user_tasks.values()
             if v.get('task') and not v['task'].done()
         )
-        await callback.message.edit_text(
-            f"🗑 <b>{name}</b> удалено.\n\n"
+        await safe_edit(
+            callback.message,
+            text=f"🗑 <b>{name}</b> удалено.\n\n"
             f"📊 <b>Активные направления ({active_count}):</b>",
-            parse_mode="HTML",
-            reply_markup=get_active_search_keyboard(user_tasks)
+            reply_markup=get_active_search_keyboard(user_tasks),
         )
 
     await callback.answer()
@@ -425,9 +442,9 @@ async def stop_direction(callback: CallbackQuery, state: FSMContext):
             time_remaining = subscription_manager.get_formatted_time_remaining(user_id)
         is_admin = (user_id == ADMIN_USER_ID)
 
-        await callback.message.edit_text(
-            "⛔ <b>Все направления остановлены</b>",
-            parse_mode="HTML"
+        await safe_edit(
+            callback.message,
+            text="⛔ <b>Все направления остановлены</b>",
         )
         await callback.message.answer(
             "🏠 <b>Главное меню</b>",
@@ -438,10 +455,10 @@ async def stop_direction(callback: CallbackQuery, state: FSMContext):
         await state.clear()
     else:
         tasks[user_id] = user_tasks
-        await callback.message.edit_text(
-            f"📊 <b>Активные направления ({len(user_tasks)}):</b>",
-            parse_mode="HTML",
-            reply_markup=get_active_search_keyboard(user_tasks)
+        await safe_edit(
+            callback.message,
+            text=f"📊 <b>Активные направления ({len(user_tasks)}):</b>",
+            reply_markup=get_active_search_keyboard(user_tasks),
         )
 
 
@@ -463,9 +480,9 @@ async def stop_all_directions(callback: CallbackQuery, state: FSMContext):
         time_remaining = subscription_manager.get_formatted_time_remaining(user_id)
     is_admin = (user_id == ADMIN_USER_ID)
 
-    await callback.message.edit_text(
-        "⛔ <b>Все направления остановлены</b>",
-        parse_mode="HTML"
+    await safe_edit(
+        callback.message,
+        text="⛔ <b>Все направления остановлены</b>",
     )
     await callback.message.answer(
         "🏠 <b>Главное меню</b>",
@@ -502,11 +519,11 @@ async def add_direction_during_search(callback: CallbackQuery, state: FSMContext
     # По умолчанию все доступные пресеты выбраны
     available_ids = [p['id'] for p in available]
     await state.update_data(selected_preset_ids=available_ids)
-    await callback.message.edit_text(
-        "➕ <b>Добавить направление в поиск:</b>\n\n"
+    await safe_edit(
+        callback.message,
+        text="➕ <b>Добавить направление в поиск:</b>\n\n"
         "Выберите фильтр из сохранённых:",
-        parse_mode="HTML",
-        reply_markup=get_multi_select_presets_keyboard(available, set(available_ids))
+        reply_markup=get_multi_select_presets_keyboard(available, set(available_ids)),
     )
     await state.set_state(PresetStates.selecting_preset)
     await callback.answer()
@@ -528,10 +545,10 @@ async def select_preset(callback: CallbackQuery, state: FSMContext):
     await state.update_data(selected_preset_id=preset_id)
 
     text = _format_preset_info(preset)
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=get_preset_actions_keyboard(preset_id)
+    await safe_edit(
+        callback.message,
+        text=text,
+        reply_markup=get_preset_actions_keyboard(preset_id),
     )
     await state.set_state(PresetStates.editing_preset)
     await callback.answer()
@@ -600,9 +617,9 @@ async def use_preset_for_search(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     active_searches[user_id] = True
 
-    await callback.message.edit_text(
-        f"🚀 <b>Поиск запущен!</b>\n\n{search_info}\n",
-        parse_mode="HTML"
+    await safe_edit(
+        callback.message,
+        text=f"🚀 <b>Поиск запущен!</b>\n\n{search_info}\n",
     )
     await state.set_state(SearchStates.searching)
 
@@ -663,15 +680,9 @@ async def delete_preset_handler(callback: CallbackQuery, state: FSMContext):
 
     deleted = delete_preset(preset_id, user_id)
     if deleted:
-        await callback.message.edit_text(
-            "✅ <b>Фильтр удалён!</b>",
-            parse_mode="HTML"
-        )
+        await safe_edit(callback.message, text="✅ <b>Фильтр удалён!</b>")
     else:
-        await callback.message.edit_text(
-            "❌ Фильтр не найден",
-            parse_mode="HTML"
-        )
+        await safe_edit(callback.message, text="❌ Фильтр не найден")
 
     # Возвращаемся к списку пресетов
     presets = get_user_presets(user_id)
@@ -731,11 +742,11 @@ async def edit_preset_handler(callback: CallbackQuery, state: FSMContext):
         car_type_ids=preset.get('car_type_ids', []),
     )
 
-    await callback.message.edit_text(
-        "✏️ <b>Редактирование фильтра</b>\n\n"
+    await safe_edit(
+        callback.message,
+        text="✏️ <b>Редактирование фильтра</b>\n\n"
         "Текущие параметры загружены. Настройте маршрут и фильтры заново.\n"
         "После настройки вы сможете сохранить фильтр с новыми параметрами.",
-        parse_mode="HTML"
     )
 
     # Отправляем на настройку маршрута с предзаполненными данными
@@ -758,9 +769,9 @@ async def back_to_presets(callback: CallbackQuery, state: FSMContext):
     presets = get_user_presets(user_id)
 
     if not presets:
-        await callback.message.edit_text(
-            "📂 Сохранённых фильтров нет.",
-            parse_mode="HTML"
+        await safe_edit(
+            callback.message,
+            text="📂 Сохранённых фильтров нет.",
         )
         await callback.message.answer(
             "Выберите действие:",
@@ -770,11 +781,11 @@ async def back_to_presets(callback: CallbackQuery, state: FSMContext):
     else:
         data = await state.get_data()
         selected = set(data.get("selected_preset_ids", []))
-        await callback.message.edit_text(
-            "📂 <b>Ваши сохранённые фильтры:</b>\n\n"
+        await safe_edit(
+            callback.message,
+            text="📂 <b>Ваши сохранённые фильтры:</b>\n\n"
             "Отметьте нужные фильтры и нажмите «Искать»:",
-            parse_mode="HTML",
-            reply_markup=get_multi_select_presets_keyboard(presets, selected)
+            reply_markup=get_multi_select_presets_keyboard(presets, selected),
         )
         await state.set_state(PresetStates.selecting_preset)
 
@@ -786,7 +797,7 @@ async def back_to_presets(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "cancel_presets")
 async def cancel_presets(callback: CallbackQuery, state: FSMContext):
     """Возврат из меню пресетов."""
-    await callback.message.edit_text("❌ Отменено")
+    await safe_edit(callback.message, text="❌ Отменено")
     await callback.message.answer(
         "Выберите действие:",
         reply_markup=get_add_route_keyboard()
@@ -873,11 +884,11 @@ async def save_preset_auto(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")]
     ])
 
-    await callback.message.edit_text(
-        f"✅ <b>Фильтр сохранён!</b>\n\n{names_text}\n\n"
+    await safe_edit(
+        callback.message,
+        text=f"✅ <b>Фильтр сохранён!</b>\n\n{names_text}\n\n"
         f"Теперь вы можете быстро загрузить его из меню «📂 Мои фильтры».",
-        parse_mode="HTML",
-        reply_markup=saved_keyboard
+        reply_markup=saved_keyboard,
     )
     await callback.answer()
     await state.set_state(SearchStates.adding_route)

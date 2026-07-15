@@ -21,7 +21,7 @@ SYNC_RETRY_STRATEGY = Retry(
 )
 
 # Настройки для асинхронных запросов
-ASYNC_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
+ASYNC_TIMEOUT = aiohttp.ClientTimeout(total=60, connect=10)
 ASYNC_RETRY_ATTEMPTS = 3
 ASYNC_RETRY_DELAY = 5  # секунды
 

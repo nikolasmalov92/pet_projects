@@ -1,9 +1,10 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Message, CallbackQuery
 
 from handlers.handler_admin import router as admin_router
 from handlers.handler_start import router as handler_start
@@ -45,6 +46,17 @@ dp.include_router(weight_router)
 dp.include_router(type_selection_car_load_router)
 dp.include_router(type_car_router)
 dp.include_router(presets_router)
+
+
+# Catch-all для необработанных сообщений и callback-кнопок
+@dp.message()
+async def catch_all_message(message: Message):
+    await message.answer("Пожалуйста, используйте кнопки меню ⬇️")
+
+
+@dp.callback_query()
+async def catch_all_callback(callback: CallbackQuery):
+    await callback.answer("Эта кнопка больше не актуальна", show_alert=True)
 
 
 async def main():
