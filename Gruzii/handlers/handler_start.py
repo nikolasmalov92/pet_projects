@@ -202,8 +202,9 @@ async def add_direction_from_keyboard(message: Message, state: FSMContext):
     await state.set_state(PresetStates.selecting_preset)
 
 
-@router.message(F.text == "🔙 Главное меню")
+@router.message(F.text == "🏠 Главное меню")
 async def back_to_main(message: Message, state: FSMContext):
+    """Обработка кнопки «🏠 Главное меню» — возврат в главное меню."""
     user_id = message.from_user.id
     active_searches[user_id] = False
 

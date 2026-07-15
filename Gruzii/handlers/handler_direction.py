@@ -239,6 +239,13 @@ async def new_search_from_presets(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(SearchStates.setting_from_type))
 async def set_from_type(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer(
+            "❌ Пожалуйста, используйте кнопки для выбора",
+            reply_markup=get_type_keyboard()
+        )
+        return
+
     text = message.text.replace("🏙️ ", "").replace("🌍 ", "").replace("🗺️ ", "")
     if text in ["Город", "Регион", "Страна"]:
         await state.update_data(from_type=get_type_id(text), from_type_name=text)
@@ -324,6 +331,13 @@ async def handle_to_radius(callback: CallbackQuery, state: FSMContext):
 
 @router.message(StateFilter(SearchStates.setting_to_type))
 async def set_to_type(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer(
+            "❌ Пожалуйста, используйте кнопки для выбора",
+            reply_markup=get_to_type_keyboard()
+        )
+        return
+
     text = message.text.replace("🏙️ ", "").replace("🌍 ", "").replace("🗺️ ", "").replace("🌐 ", "")
 
     if text == "Любое направление":
@@ -345,6 +359,11 @@ async def set_to_type(message: Message, state: FSMContext):
             "📍 Введите название пункта отправления:",
             parse_mode="HTML",
             reply_markup=await check_subscription_get_menu(message.from_user.id)
+        )
+    else:
+        await message.answer(
+            "❌ Пожалуйста, используйте кнопки для выбора",
+            reply_markup=get_to_type_keyboard()
         )
 
 

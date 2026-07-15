@@ -48,7 +48,7 @@ def get_type_keyboard():
             [KeyboardButton(text="🏙️ Город"),
              KeyboardButton(text="🌍 Регион")],
             [KeyboardButton(text="🗺️ Страна")],
-            [KeyboardButton(text="🔙 Назад")]
+            [KeyboardButton(text="🔙 Назад"), KeyboardButton(text="🏠 Главное меню")]
         ],
         resize_keyboard=True,
         input_field_placeholder="Выберите тип географической точки..."
@@ -69,6 +69,7 @@ def get_search_controls():
         keyboard=[
             [KeyboardButton(text="📊 Направления")],
             [KeyboardButton(text="➕ Добавить"), KeyboardButton(text="⛔ Остановить")],
+            [KeyboardButton(text="🏠 Главное меню")],
         ],
         resize_keyboard=True,
         one_time_keyboard=False
@@ -204,7 +205,7 @@ def get_to_type_keyboard():
             [KeyboardButton(text="🏙️ Город"), KeyboardButton(text="🌍 Регион")],
             [KeyboardButton(text="🗺️ Страна")],
             [KeyboardButton(text="🌐 Любое направление")],
-            [KeyboardButton(text="🔙 Назад")]
+            [KeyboardButton(text="🔙 Назад"), KeyboardButton(text="🏠 Главное меню")]
         ],
         resize_keyboard=True,
         input_field_placeholder="Выберите тип или любое направление..."
