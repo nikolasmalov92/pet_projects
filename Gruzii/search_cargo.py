@@ -23,38 +23,41 @@ RETRY_BASE_DELAY = 10
 MAX_CONSECUTIVE_ERRORS = 5
 # Длинная пауза после множественных ошибок (секунды)
 LONG_ERROR_PAUSE = 300  # 5 минут
+# Максимальное количество одновременных Telegram-запросов (защита от flood control)
+TG_SEND_SEMAPHORE = asyncio.Semaphore(3)
 
 
 async def send_message_safe(message, text: str, reply_markup=None, parse_mode="HTML") -> bool:
     """Отправка сообщения с обработкой flood control и сетевых ошибок."""
-    for attempt in range(MAX_RETRIES):
-        try:
-            await message.answer(
-                text,
-                reply_markup=reply_markup,
-                parse_mode=parse_mode,
-            )
-            return True
-        except TelegramRetryAfter as e:
-            wait_time = e.retry_after + FLOOD_CONTROL_DELAY
-            logger.warning(f"Flood control: ожидание {wait_time} секунд")
-            await asyncio.sleep(wait_time)
-        except TelegramNetworkError as e:
-            if attempt < MAX_RETRIES - 1:
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
-                logger.warning(f"Сетевая ошибка (попытка {attempt + 1}/{MAX_RETRIES}): {e}. Повтор через {delay}с")
-                await asyncio.sleep(delay)
-            else:
-                logger.error(f"Не удалось отправить сообщение после {MAX_RETRIES} попыток: {e}")
+    async with TG_SEND_SEMAPHORE:
+        for attempt in range(MAX_RETRIES):
+            try:
+                await message.answer(
+                    text,
+                    reply_markup=reply_markup,
+                    parse_mode=parse_mode,
+                )
+                return True
+            except TelegramRetryAfter as e:
+                wait_time = e.retry_after + FLOOD_CONTROL_DELAY
+                logger.warning(f"Flood control: ожидание {wait_time} секунд")
+                await asyncio.sleep(wait_time)
+            except TelegramNetworkError as e:
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(f"Сетевая ошибка (попытка {attempt + 1}/{MAX_RETRIES}): {e}. Повтор через {delay}с")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Не удалось отправить сообщение после {MAX_RETRIES} попыток: {e}")
+                    return False
+            except TelegramBadRequest as e:
+                # Ошибки валидации (невалидный HTML и т.д.) - не повторяем
+                logger.error(f"Ошибка валидации сообщения: {e}")
                 return False
-        except TelegramBadRequest as e:
-            # Ошибки валидации (невалидный HTML и т.д.) - не повторяем
-            logger.error(f"Ошибка валидации сообщения: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Неожиданная ошибка при отправке сообщения: {e}", exc_info=True)
-            return False
-    return False
+            except Exception as e:
+                logger.error(f"Неожиданная ошибка при отправке сообщения: {e}", exc_info=True)
+                return False
+        return False
 
 
 async def search_cargo_for_user(
@@ -113,23 +116,18 @@ async def _search_loop(
                 break
 
             # Получаем ID городов с retry логикой
-            from_id = await ati_client.get_city_id_async(from_name, from_type)
+            from_id, resolved_from_type = await ati_client.get_city_id_async(from_name, from_type)
 
             if any_direction:
                 to_id = None
+                resolved_to_type = None
             else:
-                to_id = await ati_client.get_city_id_async(to_name, to_type) if to_name else None
+                to_id, resolved_to_type = await ati_client.get_city_id_async(to_name, to_type) if to_name else (None, None)
 
             if not from_id or (not any_direction and not to_id):
                 logger.warning(
                     f"Не удалось определить гео-точки: {from_name} ({from_type}) → "
                     f"{'любое' if any_direction else f'{to_name} ({to_type})'}"
-                )
-                await send_message_safe(
-                    message,
-                    f"❌ Не удалось определить маршрут: <b>{from_name} → "
-                    f"{'любое направление' if any_direction else to_name}</b>\n"
-                    f"Проверьте правильность названий."
                 )
                 break
 
@@ -143,8 +141,8 @@ async def _search_loop(
 
             # Получаем грузы с retry логикой
             cargo_data = await ati_client.get_cargo_async(
-                from_id, from_type,
-                to_id, to_type,
+                from_id, resolved_from_type,
+                to_id, resolved_to_type,
                 weight_min, weight_max,
                 volume_from, volume_to,
                 car_load_type_ids,

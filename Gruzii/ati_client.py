@@ -22,8 +22,8 @@ SYNC_RETRY_STRATEGY = Retry(
 
 # Настройки для асинхронных запросов
 ASYNC_TIMEOUT = aiohttp.ClientTimeout(total=60, connect=10)
-ASYNC_RETRY_ATTEMPTS = 3
-ASYNC_RETRY_DELAY = 5  # секунды
+ASYNC_RETRY_ATTEMPTS = 5
+ASYNC_RETRY_DELAY = 3  # секунды
 
 
 class AtiClient:
@@ -36,6 +36,8 @@ class AtiClient:
         self._sync_session.mount("http://", HTTPAdapter(max_retries=SYNC_RETRY_STRATEGY))
         # Переиспользуемая асинхронная сессия
         self._async_session: Optional[aiohttp.ClientSession] = None
+        # Кэш городов: (name, geo_type) -> city_id (или None если не найден)
+        self._city_cache: dict[tuple[str, int], Optional[int]] = {}
 
     async def _get_async_session(self) -> aiohttp.ClientSession:
         """Возвращает переиспользуемую асинхронную сессию."""
@@ -79,10 +81,15 @@ class AtiClient:
                     else:
                         text = await response.text()
                         logger.error(f"API error {response.status}: {text}")
-                        if attempt < ASYNC_RETRY_ATTEMPTS - 1:
-                            await asyncio.sleep(ASYNC_RETRY_DELAY * (attempt + 1))
-                        else:
-                            return None
+                        # 503/504 — транзиентные ошибки, повторяем с backoff
+                        if response.status in (503, 504):
+                            if attempt < ASYNC_RETRY_ATTEMPTS - 1:
+                                delay = ASYNC_RETRY_DELAY * (2 ** attempt)
+                                logger.warning(f"Транзиентная ошибка {response.status}, повтор через {delay}с")
+                                await asyncio.sleep(delay)
+                                continue
+                        # 404 — перманентная ошибка, не повторяем
+                        return None
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout на {url} (попытка {attempt + 1}/{ASYNC_RETRY_ATTEMPTS})")
                 if attempt < ASYNC_RETRY_ATTEMPTS - 1:
@@ -99,48 +106,86 @@ class AtiClient:
                 return None
         return None
 
-    def get_city_id(self, name: str, geo_type: int = 2) -> Optional[int]:
-        """Возвращает id города (синхронный метод с retry)."""
-        ati_type_map = {0: 4, 1: 2, 2: 1}
+    @staticmethod
+    def _extract_geo(suggestion: dict, geo_type: int) -> tuple[Optional[int], int]:
+        """Возвращает (id, cargo_type) из suggestion.
+        cargo_type: 0=страна, 1=регион, 2=город (ожидает грузовой API).
+        """
+        type_keys = {0: 'country', 1: 'region', 2: 'city'}
+        # API type → cargo type
+        api_to_cargo = {1: 2, 2: 1, 4: 0}
+        api_type_to_key = {1: 'city', 2: 'region', 4: 'country'}
+        # 1. Точное совпадение по запрошенному типу
+        obj = suggestion.get(type_keys.get(geo_type))
+        if obj and obj.get('id'):
+            return obj['id'], geo_type
+        # 2. Из ответа API — маппим API type → cargo type
+        api_type = suggestion.get('type')
+        if api_type in api_type_to_key:
+            obj = suggestion.get(api_type_to_key[api_type])
+            if obj and obj.get('id'):
+                return obj['id'], api_to_cargo[api_type]
+        return None, geo_type
+
+    async def _autocomplete(self, name: str) -> Optional[dict]:
+        """Один запрос к автокомплиту."""
         url = f"{self.base_url}/gw/gis-dict/v1/autocomplete/suggestions"
         payload = {
             "prefix": name,
-            "suggestion_types": ati_type_map.get(geo_type, 1),
+            "suggestion_types": 15,
             "limit": 10,
+            "country_id": 1,
+        }
+        data = await self._make_async_request("POST", url, json_data=payload)
+        if data:
+            suggestions = data.get('suggestions', [])
+            if suggestions:
+                first = suggestions[0]
+                return first
+        return None
+
+    def _autocomplete_sync(self, name: str) -> Optional[dict]:
+        """Синхронный вариант _autocomplete."""
+        url = f"{self.base_url}/gw/gis-dict/v1/autocomplete/suggestions"
+        payload = {
+            "prefix": name,
+            "suggestion_types": 15,
+            "limit": 10,
+            "country_id": 1,
         }
         try:
             response = self._sync_session.post(url, json=payload, timeout=15)
             if response.status_code == 200:
                 data = response.json()
-                if data.get('suggestions'):
-                    if geo_type == 0:
-                        return data['suggestions'][0].get('country', {}).get('id')
-                    elif geo_type == 1:
-                        return data['suggestions'][0].get('region', {}).get('id')
-                    else:
-                        return data['suggestions'][0].get('city', {}).get('id')
+                suggestions = data.get('suggestions', [])
+                if suggestions:
+                    return suggestions[0]
+            else:
+                logger.warning(f"[autocomplete] '{name}' → HTTP {response.status_code}")
         except requests.exceptions.RequestException as e:
-            logger.error(f"Ошибка при получении ID города '{name}': {e}")
+            logger.error(f"Ошибка автокомплита '{name}': {e}")
         return None
 
-    async def get_city_id_async(self, name: str, geo_type: int = 2) -> Optional[int]:
-        """Асинхронный вариант get_city_id."""
-        ati_type_map = {0: 4, 1: 2, 2: 1}
-        url = f"{self.base_url}/gw/gis-dict/v1/autocomplete/suggestions"
-        payload = {
-            "prefix": name,
-            "suggestion_types": ati_type_map.get(geo_type, 1),
-            "limit": 10,
-        }
-        data = await self._make_async_request("POST", url, json_data=payload)
-        if data and data.get('suggestions'):
-            if geo_type == 0:
-                return data['suggestions'][0].get('country', {}).get('id')
-            elif geo_type == 1:
-                return data['suggestions'][0].get('region', {}).get('id')
-            else:
-                return data['suggestions'][0].get('city', {}).get('id')
-        return None
+    def get_city_id(self, name: str, geo_type: int = 2) -> tuple[Optional[int], int]:
+        """Возвращает (id, geo_type) (синхронный)."""
+        suggestion = self._autocomplete_sync(name)
+        if suggestion:
+            return self._extract_geo(suggestion, geo_type)
+        return None, geo_type
+
+    async def get_city_id_async(self, name: str, geo_type: int = 2) -> tuple[Optional[int], int]:
+        """Возвращает (id, geo_type) с кэшированием."""
+        cache_key = (name.lower().strip(), geo_type)
+        if cache_key in self._city_cache:
+            cached = self._city_cache[cache_key]
+            return cached
+
+        suggestion = await self._autocomplete(name)
+        result = (None, geo_type)
+        if suggestion:
+            result = self._extract_geo(suggestion, geo_type)
+        self._city_cache[cache_key] = result
+        return result
 
     def get_cargo(
         self,
@@ -220,13 +265,13 @@ class AtiClient:
         any_direction: bool,
     ) -> dict:
         """Формирует payload для поиска грузов."""
-        from_filter = {"id": from_id, "type": from_type, "exact_only": False}
+        from_filter = {"id": from_id, "type": from_type, "exact_only": True}
         if from_radius and from_radius > 0:
             from_filter["fromRadius"] = from_radius
 
         to_filter = None
         if not any_direction and to_id:
-            to_filter = {"id": to_id, "type": to_type, "exact_only": False}
+            to_filter = {"id": to_id, "type": to_type, "exact_only": True}
             if to_radius and to_radius > 0:
                 to_filter["toRadius"] = to_radius
 
