@@ -12,9 +12,9 @@ from storage import search_paused
 logger = logging.getLogger(__name__)
 
 # Rate limiting: минимальная задержка между сообщениями (секунды)
-MESSAGE_DELAY = 1.0
+MESSAGE_DELAY = 2.0
 # Задержка при flood control (секунды)
-FLOOD_CONTROL_DELAY = 5
+FLOOD_CONTROL_DELAY = 10
 # Максимальное количество попыток при сетевых ошибках
 MAX_RETRIES = 3
 # Базовая задержка для exponential backoff (секунды)
@@ -25,22 +25,38 @@ MAX_CONSECUTIVE_ERRORS = 5
 LONG_ERROR_PAUSE = 300  # 5 минут
 # Максимальное количество одновременных Telegram-запросов (защита от flood control)
 TG_SEND_SEMAPHORE = asyncio.Semaphore(3)
+# Глобальная задержка flood control (адаптивная)
+_flood_delay = MESSAGE_DELAY
+_flood_consecutive = 0
 
 
 async def send_message_safe(message, text: str, reply_markup=None, parse_mode="HTML") -> bool:
     """Отправка сообщения с обработкой flood control и сетевых ошибок."""
+    global _flood_delay, _flood_consecutive
     async with TG_SEND_SEMAPHORE:
         for attempt in range(MAX_RETRIES):
             try:
+                # Адаптивная задержка перед отправкой
+                if _flood_delay > MESSAGE_DELAY:
+                    await asyncio.sleep(_flood_delay)
                 await message.answer(
                     text,
                     reply_markup=reply_markup,
                     parse_mode=parse_mode,
                 )
+                # Успешная отправка — сбрасываем flood delay
+                _flood_consecutive = 0
+                _flood_delay = MESSAGE_DELAY
                 return True
             except TelegramRetryAfter as e:
+                _flood_consecutive += 1
+                # Увеличиваем задержку при каждом flood control
+                _flood_delay = min(e.retry_after + FLOOD_CONTROL_DELAY, 600)
                 wait_time = e.retry_after + FLOOD_CONTROL_DELAY
-                logger.warning(f"Flood control: ожидание {wait_time} секунд")
+                logger.warning(
+                    f"Flood control: ожидание {wait_time} секунд "
+                    f"(подряд #{_flood_consecutive}, следующая задержка: {_flood_delay}с)"
+                )
                 await asyncio.sleep(wait_time)
             except TelegramNetworkError as e:
                 if attempt < MAX_RETRIES - 1:
@@ -251,7 +267,7 @@ async def _search_loop(
         consecutive_errors = 0
 
         # Пауза между циклами поиска (с проверкой паузы каждую секунду)
-        for _ in range(3 * 60):
+        for _ in range(5 * 60):
             if not active_searches.get(user_id, False):
                 break
             while search_paused.get(user_id, False) and active_searches.get(user_id, False):

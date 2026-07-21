@@ -81,8 +81,8 @@ class AtiClient:
                     else:
                         text = await response.text()
                         logger.error(f"API error {response.status}: {text}")
-                        # 503/504 — транзиентные ошибки, повторяем с backoff
-                        if response.status in (503, 504):
+                        # 500/503/504 — транзиентные ошибки сервера, повторяем с backoff
+                        if response.status in (500, 503, 504):
                             if attempt < ASYNC_RETRY_ATTEMPTS - 1:
                                 delay = ASYNC_RETRY_DELAY * (2 ** attempt)
                                 logger.warning(f"Транзиентная ошибка {response.status}, повтор через {delay}с")
